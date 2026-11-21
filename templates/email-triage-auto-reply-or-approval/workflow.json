@@ -777,6 +777,20 @@
       ],
       "onError": "continueRegularOutput",
       "notes": "Must use the same Gmail credential as New Email, or Gmail returns 'Requested entity was not found'."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Part 2 only works when Part 1 hands it an email.\n// Running it on its own (e.g. \"Execute step\" or picking the Handle One Email trigger\n// in the editor) gives it an empty item, and every field would be undefined.\nconst e = $input.first() ? $input.first().json : {};\nconst missing = ['messageId', 'fromAddr', 'approverEmail', 'signature'].filter(k => !e[k]);\nif (missing.length) {\n  throw new Error(\n    'No email data reached Part 2 (missing: ' + missing.join(', ') + '). ' +\n    'Do not run Part 2 on its own. Save the workflow, send yourself a test email, then run it from the New Email trigger. ' +\n    'Each email runs as its own execution: open it from the Executions tab.'\n  );\n}\nreturn $input.all();"
+      },
+      "id": "5a2b0000-0000-4000-8000-000000000099",
+      "name": "Check Email Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        120,
+        700
+      ],
+      "notes": "Stops with a clear message if Part 2 is run without an email from Part 1."
     }
   ],
   "connections": {
@@ -835,7 +849,7 @@
       "main": [
         [
           {
-            "node": "Classify & Draft",
+            "node": "Check Email Data",
             "type": "main",
             "index": 0
           }
@@ -1025,6 +1039,17 @@
         [
           {
             "node": "Label as Auto-replied",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Email Data": {
+      "main": [
+        [
+          {
+            "node": "Classify & Draft",
             "type": "main",
             "index": 0
           }

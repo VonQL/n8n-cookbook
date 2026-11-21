@@ -103,6 +103,15 @@ The workflow wasn't saved before running. Save it and run again.
 
 Set n8n's `WEBHOOK_URL` to its public address (see [n8n docs](https://docs.n8n.io/hosting/configuration/configuration-examples/webhook-url/)).
 
+**Ask for Approval fails with "Cannot read properties of undefined (reading 'trim')", or Check Email Data says "No email data reached Part 2"**
+
+Part 2 was run on its own, so it had no email. In the editor, clicking **Execute step** on a Part 2 node, or choosing the **Handle One Email** trigger when you run the workflow, starts Part 2 with an empty item. Every `$('Handle One Email')` field is then `undefined`, including the approval address. To test properly:
+
+1. Save the workflow.
+2. Send yourself a test email from another address.
+3. Run the workflow from the **New Email** trigger (or activate it and wait a minute).
+4. Open **Executions**. Each email appears as its own execution, which is where the approval step waits and where you can inspect Part 2.
+
 **Send yourself tests from a second address.** The trigger skips mail from you (`-from:me`), which also keeps your approval emails out of the workflow.
 
 ## Privacy note
