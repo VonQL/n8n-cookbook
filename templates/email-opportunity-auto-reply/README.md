@@ -36,6 +36,8 @@ New Email → Settings → Prepare Email → Worth Classifying?
 
 ## Setup
 
+> **Before the first run, fill in `myAddress` and `signature` in Settings.** `signature` is the name on every reply. Until both are set, **Prepare Email** stops the run with an error naming the missing fields.
+
 1. Import `workflow.json` into n8n (**Workflows → Import from File**).
 2. Open **Settings** and fill in:
    | Field | Meaning |

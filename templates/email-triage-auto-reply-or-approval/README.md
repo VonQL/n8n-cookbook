@@ -68,6 +68,8 @@ Suspicious but plausible emails, such as an unexpected bank-detail change or an 
 
 ## Setup
 
+> **Before the first run, fill in `myAddress`, `approverEmail` and `signature` in Settings.** `approverEmail` is where approval requests are sent; while it still says `REPLACE_ME@example.com`, they would bounce. `signature` is the name on every reply. Until all three are set, **Prepare Email** stops the run with an error naming the missing fields.
+
 1. Import `workflow.json` into n8n (**Workflows → Import from File**).
 2. Open **Settings** and fill in:
    | Field | Meaning |
