@@ -248,7 +248,8 @@
       ],
       "retryOnFail": true,
       "maxTries": 3,
-      "waitBetweenTries": 5000
+      "waitBetweenTries": 5000,
+      "notes": "Must use the same Gmail credential as New Email, or Gmail returns 'Requested entity was not found'."
     },
     {
       "parameters": {
@@ -291,8 +292,8 @@
     },
     {
       "parameters": {
-        "content": "## Email opportunity auto-reply\nReplies only to genuine business, work and income opportunities. Ads, upsells, newsletters and spam are ignored.\n\n1. Fill in **Settings**\n2. Connect Gmail + Google Gemini credentials\n3. Test with a few emails before activating",
-        "height": 220,
+        "content": "## Email opportunity auto-reply\nReplies only to genuine business, work and income opportunities. Ads, upsells, newsletters and spam are ignored.\n\n1. Fill in **Settings**\n2. Connect Gmail + Google Gemini credentials (use the **same** Gmail credential on all 3 Gmail nodes)\n3. Test with a few emails before activating",
+        "height": 240,
         "width": 340
       },
       "id": "0e1d0000-0000-4000-8000-000000000013",
