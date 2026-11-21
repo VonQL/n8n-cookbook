@@ -72,7 +72,7 @@ Handle One Email → Check & Draft (AI) → Needs a Human?
 - **Wait time:** open **Ask for Approval → Options → Limit Wait Time** (default 3 days). Remove the option to wait forever.
 - **Too many approval emails?** Remove categories you're happy to handle yourself from the **Check & Draft** system message, or add a condition on `risk` in **Needs a Human?** (e.g. only `high`).
 - **Missing invoices from billing systems?** Many are sent from `noreply` or bulk senders and are skipped by **Prepare Email**. Those can't be replied to anyway; to be notified about them, remove the `automatedSender` / `bulkHeaders` checks.
-- **Combine with the auto-reply template:** connect the `false` output of **Needs a Human?** to an automatic reply, so routine mail is answered automatically and risky mail waits for you.
+- **Want auto-replies too?** [email-triage-auto-reply-or-approval](../email-triage-auto-reply-or-approval/) combines this template with the opportunity auto-reply: one classifier, risky mail waits for you, genuine opportunities get an automatic acknowledgement.
 - **Cost:** only mail that passes the rule filter reaches the AI, bodies are cut to 6,000 characters, and each email costs one Claude call (plus one per redraft). The template uses `claude-haiku-5-5`, Anthropic's fastest and cheapest current model, which costs a fraction of a cent per email. If it isn't listed in your n8n version's model dropdown, switch the model field to **By ID** and type `claude-haiku-5-5`, or pick another current Haiku.
 
 ## Other approval channels
