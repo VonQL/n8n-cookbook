@@ -14,6 +14,10 @@ templates/
 - One folder per template, named in `kebab-case`.
 - `templates/_example-template/` shows the expected shape. Copy it to start a new one.
 
+## Ideas
+
+See [docs/automation-ideas.md](docs/automation-ideas.md) for a backlog of office automations that would make good templates, with the ones already built marked.
+
 ## Adding a template
 
 1. In n8n, open the workflow and choose **Download** (or select all nodes and copy).
