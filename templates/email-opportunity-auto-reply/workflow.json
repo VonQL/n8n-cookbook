@@ -148,20 +148,15 @@
     },
     {
       "parameters": {
-        "model": {
-          "__rl": true,
-          "value": "gpt-4o-mini",
-          "mode": "list",
-          "cachedResultName": "gpt-4o-mini"
-        },
+        "modelName": "models/gemini-2.5-flash",
         "options": {
           "temperature": 0
         }
       },
       "id": "0e1d0000-0000-4000-8000-000000000006",
-      "name": "OpenAI Chat Model",
-      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-      "typeVersion": 1.2,
+      "name": "Google Gemini Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
       "position": [
         860,
         120
@@ -296,7 +291,7 @@
     },
     {
       "parameters": {
-        "content": "## Email opportunity auto-reply\nReplies only to genuine business, work and income opportunities. Ads, upsells, newsletters and spam are ignored.\n\n1. Fill in **Settings**\n2. Connect Gmail + OpenAI credentials\n3. Test with a few emails before activating",
+        "content": "## Email opportunity auto-reply\nReplies only to genuine business, work and income opportunities. Ads, upsells, newsletters and spam are ignored.\n\n1. Fill in **Settings**\n2. Connect Gmail + Google Gemini credentials\n3. Test with a few emails before activating",
         "height": 220,
         "width": 340
       },
@@ -362,17 +357,6 @@
         ]
       ]
     },
-    "OpenAI Chat Model": {
-      "ai_languageModel": [
-        [
-          {
-            "node": "Classify Email",
-            "type": "ai_languageModel",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Classification Schema": {
       "ai_outputParser": [
         [
@@ -419,6 +403,17 @@
           {
             "node": "Label as Auto-replied",
             "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Classify Email",
+            "type": "ai_languageModel",
             "index": 0
           }
         ]
