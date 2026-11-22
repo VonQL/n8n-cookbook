@@ -16,11 +16,26 @@ templates/
 
 ## Templates
 
+### Email and communication
+
+- [Email opportunity auto-reply](templates/email-opportunity-auto-reply/)
+- [Human-in-the-loop email reply](templates/email-human-in-the-loop-reply/)
+- [Email triage: auto-reply or ask me first](templates/email-triage-auto-reply-or-approval/)
+- [Morning inbox digest](templates/email-morning-inbox-digest/): one Telegram message each morning summarizing your inbox
+- [Save email attachments to Drive](templates/email-attachments-to-drive/): attachments saved to Google Drive and logged in a sheet
+- [Follow-up reminders](templates/email-follow-up-reminders/): Telegram reminders for sent emails that got no reply
+
 ### Documents and data
 
 - [Invoice and receipt PDFs to Google Sheets](templates/invoice-receipt-pdf-to-sheets/): logs invoice and receipt data from Gmail PDF attachments.
 - [Recurring report from Google Sheets](templates/recurring-sheets-report/): weekly or monthly report emailed from a sheet.
 - [Form submissions to documents](templates/form-to-document/): turns a form into a quote, contract or certificate PDF.
+
+### Sales and customers
+
+- [Lead capture to CRM, with welcome email](templates/lead-capture-crm-welcome/): leads from a web form or your inbox go into a Google Sheets CRM and get a welcome email.
+- [Support ticket routing](templates/support-ticket-routing/): sends each support email to the right team, flags urgent ones and acknowledges the customer with a ticket number.
+- [Overdue invoice reminders](templates/overdue-invoice-reminders/): friendly, then firmer, reminders for unpaid invoices past their due date.
 
 ## Ideas
 

@@ -11,19 +11,22 @@ Each idea lists the n8n nodes it would most likely use. These are starting point
 | [Email opportunity auto-reply](../templates/email-opportunity-auto-reply/) | Auto-acknowledges genuine business opportunities and ignores ads, newsletters and spam |
 | [Human-in-the-loop email reply](../templates/email-human-in-the-loop-reply/) | Drafts replies to sensitive emails and waits for your approval before sending |
 | [Email triage: auto-reply or ask me first](../templates/email-triage-auto-reply-or-approval/) | Combines both: sorts every email into "needs me", "opportunity" or "ignore" |
+| [Morning inbox digest](../templates/email-morning-inbox-digest/) | Sends one Telegram message each morning summarizing the last day's inbox |
+| [Save email attachments to Drive](../templates/email-attachments-to-drive/) | Saves attachments to a Google Drive folder and logs each one in a sheet |
+| [Follow-up reminders](../templates/email-follow-up-reminders/) | Reminds you on Telegram about sent emails that got no reply, with a suggested follow-up |
 | [Invoice and receipt PDFs to Google Sheets](../templates/invoice-receipt-pdf-to-sheets/) | Reads PDF attachments from Gmail and logs vendor, dates, tax and total as one row each |
 | [Recurring report from Google Sheets](../templates/recurring-sheets-report/) | Weekly or monthly totals, breakdown and comparison emailed with a short AI summary |
 | [Form submissions to documents](../templates/form-to-document/) | Fills a Google Docs quote, contract or certificate template from a form and emails the PDF |
+| [Lead capture to CRM, with welcome email](../templates/lead-capture-crm-welcome/) | Puts leads from a web form or your inbox into a Google Sheets CRM and sends a welcome email |
+| [Support ticket routing](../templates/support-ticket-routing/) | Routes each support email to the right team, flags urgent ones and acknowledges the customer |
+| [Overdue invoice reminders](../templates/overdue-invoice-reminders/) | Sends friendly, then firmer, reminders for unpaid invoices past their due date |
 
 ## Email and communication
 
-- **✅ Built: Auto-reply to opportunities and approve sensitive replies.** See the three templates above.
-- **Morning inbox digest.** Summarize the last day's inbox into one digest sent to Telegram or Slack.
-  *Nodes:* Schedule Trigger, Gmail (get many), Anthropic / AI Agent, Telegram or Slack.
-- **Save attachments to Drive.** Save email attachments such as invoices and receipts to Google Drive, then log each one in a sheet.
-  *Nodes:* Gmail Trigger (download attachments), IF / Filter, Google Drive (upload), Google Sheets (append row).
-- **Follow-up reminders.** Remind you about sent emails that got no reply within X days.
-  *Nodes:* Schedule Trigger, Gmail (search sent mail), Gmail (get thread), Code / Filter, Slack, Telegram or Gmail (send).
+- **✅ Built: Auto-reply to opportunities and approve sensitive replies.** See the first three templates above.
+- **✅ Built: Morning inbox digest.** Summarize the last day's inbox into one digest sent to Telegram. See [email-morning-inbox-digest](../templates/email-morning-inbox-digest/).
+- **✅ Built: Save attachments to Drive.** Save email attachments such as invoices and receipts to Google Drive, then log each one in a sheet. See [email-attachments-to-drive](../templates/email-attachments-to-drive/).
+- **✅ Built: Follow-up reminders.** Remind you about sent emails that got no reply within X days. See [email-follow-up-reminders](../templates/email-follow-up-reminders/).
 
 ## Meetings and calendar
 
@@ -54,12 +57,12 @@ Each idea lists the n8n nodes it would most likely use. These are starting point
 
 ## Sales and customers
 
-- **Lead capture.** Capture leads from web forms or email into a CRM, then send a welcome email.
-  *Nodes:* Webhook / Form Trigger or Gmail Trigger, Anthropic (extract fields), HubSpot / Pipedrive / Google Sheets, Gmail.
-- **Support ticket routing.** Route support tickets to the right person and send an automatic acknowledgement, building on the [email triage](../templates/email-triage-auto-reply-or-approval/) template.
-  *Nodes:* Gmail Trigger or helpdesk Webhook, Anthropic (classify), Switch, Slack, Gmail (acknowledge).
-- **Overdue invoice reminders.** Send polite reminders for unpaid invoices past their due date.
-  *Nodes:* Schedule Trigger, Google Sheets / Stripe / QuickBooks, Filter (overdue), Gmail.
+- **✅ Built: Lead capture.** Capture leads from web forms or email into a CRM, then send a welcome email. See [Lead capture to CRM](../templates/lead-capture-crm-welcome/).
+  *Nodes:* Form Trigger, Gmail Trigger, Anthropic (extract fields), Google Sheets, Gmail.
+- **✅ Built: Support ticket routing.** Route support tickets to the right person and send an automatic acknowledgement, building on the [email triage](../templates/email-triage-auto-reply-or-approval/) template. See [Support ticket routing](../templates/support-ticket-routing/).
+  *Nodes:* Gmail Trigger, Anthropic (classify), Switch, Gmail (notify, acknowledge), Slack (optional).
+- **✅ Built: Overdue invoice reminders.** Send polite reminders for unpaid invoices past their due date. See [Overdue invoice reminders](../templates/overdue-invoice-reminders/).
+  *Nodes:* Schedule Trigger, Google Sheets, Code (overdue check), Gmail.
 
 ## Suggested next templates
 

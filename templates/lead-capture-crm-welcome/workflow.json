@@ -1,0 +1,1134 @@
+{
+  "name": "Lead capture: form or email to CRM, with welcome email",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Get in touch",
+        "formDescription": "Tell us a little about what you need and we'll get back to you.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Name",
+              "placeholder": "Ana Santos",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Email",
+              "fieldType": "email",
+              "placeholder": "ana@company.com",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Company",
+              "placeholder": "Optional"
+            },
+            {
+              "fieldLabel": "Phone",
+              "placeholder": "Optional"
+            },
+            {
+              "fieldLabel": "How can we help?",
+              "fieldType": "textarea",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {
+          "appendAttribution": false,
+          "respondWithOptions": {
+            "values": {
+              "formSubmittedText": "Thanks! We've received your message and sent you a confirmation email."
+            }
+          }
+        }
+      },
+      "id": "1ead0000-0000-4000-8000-000000000001",
+      "name": "Website Form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        -160
+      ],
+      "webhookId": "1ead0000-f0f0-4000-8000-000000000001",
+      "notes": "Share the Production URL of this form, or embed it on your website."
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "simple": false,
+        "filters": {
+          "q": "in:inbox -category:promotions -category:social -category:forums -from:me",
+          "readStatus": "unread"
+        },
+        "options": {}
+      },
+      "id": "1ead0000-0000-4000-8000-000000000002",
+      "name": "New Email",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        160
+      ],
+      "notes": "Watches your inbox for sales inquiries. Narrow the search (e.g. add to:sales@yourdomain.com) if you only want one address."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "s1",
+              "name": "myAddress",
+              "value": "REPLACE_ME@example.com",
+              "type": "string"
+            },
+            {
+              "id": "s2",
+              "name": "ownerEmail",
+              "value": "REPLACE_ME@example.com",
+              "type": "string"
+            },
+            {
+              "id": "s3",
+              "name": "signature",
+              "value": "REPLACE_ME Your Name",
+              "type": "string"
+            },
+            {
+              "id": "s4",
+              "name": "sheetId",
+              "value": "REPLACE_ME_SHEET_ID",
+              "type": "string"
+            },
+            {
+              "id": "s5",
+              "name": "sheetName",
+              "value": "Leads",
+              "type": "string"
+            },
+            {
+              "id": "s6",
+              "name": "welcomeSubject",
+              "value": "Thanks for getting in touch",
+              "type": "string"
+            },
+            {
+              "id": "s7",
+              "name": "replyWithin",
+              "value": "1 business day",
+              "type": "string"
+            },
+            {
+              "id": "s8",
+              "name": "bookingLink",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "s9",
+              "name": "minConfidence",
+              "value": 0.7,
+              "type": "number"
+            },
+            {
+              "id": "s10",
+              "name": "leadLabelId",
+              "value": "REPLACE_ME_LABEL_ID",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "1ead0000-0000-4000-8000-000000000003",
+      "name": "Settings",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        0
+      ],
+      "notes": "Fill these in before the first run. The workflow stops with an error while myAddress, ownerEmail, signature or sheetId still say REPLACE_ME."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Stop early with a clear message if Settings still holds the template placeholders.\n{\n  const s = $('Settings').first().json;\n  const unset = [\"myAddress\", \"ownerEmail\", \"signature\", \"sheetId\"].filter(k => !String(s[k] ?? '').trim() || String(s[k]).includes('REPLACE_ME'));\n  if (unset.length) {\n    throw new Error('Open the Settings node and fill in: ' + unset.join(', ') + '. They still contain REPLACE_ME placeholders.');\n  }\n}\n\n// Turn a form submission or a Gmail message into one common shape.\n// Email gets cheap rule checks first, so automated and bulk mail never costs an AI call.\nconst SETTINGS = ['ownerEmail', 'signature', 'sheetId', 'sheetName', 'welcomeSubject', 'replyWithin', 'bookingLink', 'minConfidence', 'leadLabelId'];\nconst isEmailAddress = v => /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(v);\n\nreturn $input.all().map(item => {\n  const m = item.json;\n  const s = {};\n  for (const k of SETTINGS) s[k] = m[k];\n\n  // Gmail messages have a threadId; form submissions don't.\n  if (!m.threadId) {\n    const email = String(m['Email'] || '').trim().toLowerCase();\n    const name = String(m['Name'] || '').trim();\n    return {\n      json: {\n        source: 'form',\n        email,\n        name,\n        company: String(m['Company'] || '').trim(),\n        phone: String(m['Phone'] || '').trim(),\n        message: String(m['How can we help?'] || '').trim().slice(0, 6000),\n        messageId: '',\n        threadId: '',\n        skipReason: isEmailAddress(email) ? '' : 'form email address is not valid',\n        ...s,\n      },\n    };\n  }\n\n  const headers = m.headers || {};\n  const h = key => String(headers[key] || '').toLowerCase();\n  const sender = (m.from && m.from.value && m.from.value[0]) || {};\n  const fromAddr = String(sender.address || '').toLowerCase();\n  const subject = m.subject || '';\n  const body = String(m.text || '').replace(/\\s+/g, ' ').trim().slice(0, 6000);\n\n  const automatedSender = /(no-?reply|do-?not-?reply|mailer-daemon|postmaster|notifications?@|newsletter|bounce)/i.test(fromAddr);\n  const autoSubmitted = h('auto-submitted');\n  const bulkHeaders =\n    Boolean(headers['list-unsubscribe']) ||\n    /(bulk|list|junk)/.test(h('precedence')) ||\n    (autoSubmitted !== '' && !/(^|:\\s*)no\\s*$/.test(autoSubmitted));\n  // A reply or forward is an existing conversation, not a new lead.\n  const isReply = /^\\s*(re|fwd?|aw)\\s*:/i.test(subject);\n  const isSelf = fromAddr === String(m.myAddress || '').toLowerCase();\n\n  let skipReason = '';\n  if (isSelf) skipReason = 'sent by me';\n  else if (automatedSender) skipReason = 'automated sender';\n  else if (bulkHeaders) skipReason = 'bulk or mailing-list headers';\n  else if (isReply) skipReason = 'reply in an existing conversation';\n\n  return {\n    json: {\n      source: 'email',\n      email: fromAddr,\n      name: sender.name || '',\n      company: '',\n      phone: '',\n      message: body,\n      subject,\n      messageId: m.id,\n      threadId: m.threadId,\n      skipReason,\n      ...s,\n    },\n  };\n});"
+      },
+      "id": "1ead0000-0000-4000-8000-000000000004",
+      "name": "Prepare Lead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "k1",
+                    "leftValue": "={{ $json.skipReason }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "string",
+                      "operation": "notEmpty",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Skip"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "k2",
+                    "leftValue": "={{ $json.source }}",
+                    "rightValue": "form",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Form"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "Email"
+        }
+      },
+      "id": "1ead0000-0000-4000-8000-000000000005",
+      "name": "Route by Source",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        720,
+        0
+      ],
+      "notes": "Form leads go straight to the CRM. Emails are checked by the AI first."
+    },
+    {
+      "parameters": {},
+      "id": "1ead0000-0000-4000-8000-000000000006",
+      "name": "Skipped",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        980,
+        -220
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=From: {{ $json.name }} <{{ $json.email }}>\nSubject: {{ $json.subject }}\n\nBody:\n{{ $json.message }}",
+        "hasOutputParser": true,
+        "messages": {
+          "messageValues": [
+            {
+              "message": "=You read one incoming email for a freelancer or small business and decide whether it is a NEW SALES LEAD: a real person or company who may want to BUY the recipient's products or services (a quote request, a project inquiry, a question about prices or availability, a request for a call or demo, a referral of a potential client).\n\nNOT leads: vendors or agencies trying to sell to the recipient, recruiters, job applicants, newsletters and promotions, existing customers asking for support, invoices and receipts, personal mail, notifications, and spam or scams. When unsure, set is_lead to false or lower \"confidence\" (0 to 1).\n\nIf it is a lead, extract what the email actually says. Never invent details; use an empty string for anything not stated.\n- \"name\": the person's full name (from the signature or the From line).\n- \"email\": a contact address they ask you to use, if it differs from the sender's; otherwise an empty string.\n- \"company\", \"phone\": as written in the email or signature.\n- \"interest\": a short lowercase noun phrase for a sentence like \"Thanks for getting in touch about ___\", e.g. \"a new website for your bakery\", max 10 words, no quotes.\n- \"budget\", \"timeline\": as stated, e.g. \"around $5k\", \"by March\".\n- \"summary\": one or two sentences on what they want.\n- \"reason\": one sentence on why this is or is not a lead."
+            }
+          ]
+        }
+      },
+      "id": "1ead0000-0000-4000-8000-000000000007",
+      "name": "Extract Lead (AI)",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.5,
+      "position": [
+        980,
+        160
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "claude-haiku-5-5",
+          "cachedResultName": "Claude Haiku 5.5"
+        },
+        "options": {}
+      },
+      "id": "1ead0000-0000-4000-8000-000000000008",
+      "name": "Anthropic Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [
+        940,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"is_lead\": {\n      \"type\": \"boolean\"\n    },\n    \"confidence\": {\n      \"type\": \"number\",\n      \"description\": \"0 to 1\"\n    },\n    \"name\": {\n      \"type\": \"string\"\n    },\n    \"email\": {\n      \"type\": \"string\"\n    },\n    \"company\": {\n      \"type\": \"string\"\n    },\n    \"phone\": {\n      \"type\": \"string\"\n    },\n    \"interest\": {\n      \"type\": \"string\"\n    },\n    \"budget\": {\n      \"type\": \"string\"\n    },\n    \"timeline\": {\n      \"type\": \"string\"\n    },\n    \"summary\": {\n      \"type\": \"string\"\n    },\n    \"reason\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"is_lead\",\n    \"confidence\",\n    \"name\",\n    \"email\",\n    \"company\",\n    \"phone\",\n    \"interest\",\n    \"budget\",\n    \"timeline\",\n    \"summary\",\n    \"reason\"\n  ]\n}"
+      },
+      "id": "1ead0000-0000-4000-8000-000000000009",
+      "name": "Lead Schema",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [
+        1120,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "l1",
+              "leftValue": "={{ $json.output.is_lead }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "l2",
+              "leftValue": "={{ $json.output.confidence }}",
+              "rightValue": "={{ $('Prepare Lead').item.json.minConfidence }}",
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "1ead0000-0000-4000-8000-000000000010",
+      "name": "Is a Lead?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1320,
+        160
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "1ead0000-0000-4000-8000-000000000011",
+      "name": "Not a Lead",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1560,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build one lead record, whichever way it arrived.\nconst isEmailAddress = v => /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(v);\nconst now = $now.toFormat('yyyy-MM-dd HH:mm');\n\nreturn $input.all().map((item, i) => {\n  const p = $('Prepare Lead').itemMatching(i).json;\n  const ai = item.json.output; // only set for email leads\n  const lead = { ...p };\n  if (ai) {\n    const alt = String(ai.email || '').trim().toLowerCase();\n    lead.email = isEmailAddress(alt) ? alt : p.email;\n    lead.name = ai.name || p.name;\n    lead.company = ai.company || '';\n    lead.phone = ai.phone || '';\n    lead.interest = ai.interest || '';\n    lead.budget = ai.budget || '';\n    lead.timeline = ai.timeline || '';\n    lead.summary = ai.summary || '';\n  } else {\n    lead.interest = '';\n    lead.budget = '';\n    lead.timeline = '';\n    lead.summary = p.message.slice(0, 500);\n  }\n  lead.firstName = String(lead.name || '').split(/\\s+/)[0] || '';\n  lead.receivedAt = now;\n\n  // The welcome email, written here so it is easy to edit in one place.\n  lead.welcomeMessage = [\n    `Hi ${lead.firstName || 'there'},`,\n    '',\n    `Thanks for getting in touch${lead.interest ? ' about ' + lead.interest : ''}. I've received your message and will get back to you personally within ${p.replyWithin}.`,\n    ...(p.bookingLink ? ['', `If it's easier, you can book a short call at a time that suits you: ${p.bookingLink}`] : []),\n    '',\n    'Best regards,',\n    p.signature,\n  ].join('\\n');\n\n  return { json: lead, pairedItem: { item: i } };\n});"
+      },
+      "id": "1ead0000-0000-4000-8000-000000000012",
+      "name": "Lead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        0
+      ],
+      "notes": "Both paths meet here. Edit welcomeMessage in this node to change the welcome email."
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Lead').first().json.sheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $('Lead').first().json.sheetName }}",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "1ead0000-0000-4000-8000-000000000013",
+      "name": "Read Existing Leads",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1800,
+        0
+      ],
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "notes": "Reads the CRM sheet once, to tell new leads from people you already know."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Mark each lead as new or already in the sheet (matched on email).\n// Also de-duplicates leads that arrive twice in the same run.\nconst known = new Set(\n  $input.all().map(r => String(r.json['Email'] || '').trim().toLowerCase()).filter(Boolean)\n);\nreturn $('Lead').all().map((item, i) => {\n  const lead = item.json;\n  const isNew = !known.has(lead.email);\n  known.add(lead.email);\n  return { json: { ...lead, isNew }, pairedItem: { item: 0 } };\n});"
+      },
+      "id": "1ead0000-0000-4000-8000-000000000014",
+      "name": "New or Known?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2040,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "n1",
+              "leftValue": "={{ $json.isNew }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "1ead0000-0000-4000-8000-000000000015",
+      "name": "Is New?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2280,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $json.sheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $json.sheetName }}",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Email": "={{ $json.email }}",
+            "Name": "={{ $json.name }}",
+            "Company": "={{ $json.company }}",
+            "Phone": "={{ $json.phone }}",
+            "Source": "={{ $json.source }}",
+            "Interest": "={{ $json.interest }}",
+            "Budget": "={{ $json.budget }}",
+            "Timeline": "={{ $json.timeline }}",
+            "Summary": "={{ $json.summary }}",
+            "Status": "New",
+            "First contact": "={{ $json.receivedAt }}",
+            "Last contact": "={{ $json.receivedAt }}",
+            "Last message": "={{ $json.summary }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Company",
+              "displayName": "Company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Phone",
+              "displayName": "Phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Source",
+              "displayName": "Source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Interest",
+              "displayName": "Interest",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Budget",
+              "displayName": "Budget",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Timeline",
+              "displayName": "Timeline",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Summary",
+              "displayName": "Summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "First contact",
+              "displayName": "First contact",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Last contact",
+              "displayName": "Last contact",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Last message",
+              "displayName": "Last message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1ead0000-0000-4000-8000-000000000016",
+      "name": "Add to CRM",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        2520,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $json.sheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $json.sheetName }}",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Email": "={{ $json.email }}",
+            "Last contact": "={{ $json.receivedAt }}",
+            "Last message": "={{ $json.summary }}"
+          },
+          "matchingColumns": [
+            "Email"
+          ],
+          "schema": [
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Company",
+              "displayName": "Company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Phone",
+              "displayName": "Phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Source",
+              "displayName": "Source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Interest",
+              "displayName": "Interest",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Budget",
+              "displayName": "Budget",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Timeline",
+              "displayName": "Timeline",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Summary",
+              "displayName": "Summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "First contact",
+              "displayName": "First contact",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Last contact",
+              "displayName": "Last contact",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Last message",
+              "displayName": "Last message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1ead0000-0000-4000-8000-000000000017",
+      "name": "Update Last Contact",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        2520,
+        160
+      ],
+      "notes": "Known contact: only Last contact and Last message change. No second welcome email."
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('New or Known?').item.json.ownerEmail }}",
+        "subject": "=New lead: {{ $('New or Known?').item.json.name || $('New or Known?').item.json.email }}{{ $('New or Known?').item.json.company ? ' (' + $('New or Known?').item.json.company + ')' : '' }} via {{ $('New or Known?').item.json.source }}",
+        "emailType": "text",
+        "message": "=Name: {{ $('New or Known?').item.json.name }}\nEmail: {{ $('New or Known?').item.json.email }}\nCompany: {{ $('New or Known?').item.json.company || '-' }}\nPhone: {{ $('New or Known?').item.json.phone || '-' }}\nInterest: {{ $('New or Known?').item.json.interest || '-' }}\nBudget: {{ $('New or Known?').item.json.budget || '-' }}\nTimeline: {{ $('New or Known?').item.json.timeline || '-' }}\n\n{{ $('New or Known?').item.json.summary }}\n\nA welcome email has been sent. The lead is in your CRM sheet:\nhttps://docs.google.com/spreadsheets/d/{{ $('New or Known?').item.json.sheetId }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "1ead0000-0000-4000-8000-000000000018",
+      "name": "Notify Me",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2780,
+        -320
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "e1",
+              "leftValue": "={{ $('New or Known?').item.json.source }}",
+              "rightValue": "email",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "1ead0000-0000-4000-8000-000000000019",
+      "name": "Came by Email?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2780,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "reply",
+        "messageId": "={{ $('New or Known?').item.json.messageId }}",
+        "emailType": "text",
+        "message": "={{ $('New or Known?').item.json.welcomeMessage }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "1ead0000-0000-4000-8000-000000000020",
+      "name": "Reply with Welcome",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        3040,
+        -180
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "notes": "Must use the same Gmail credential as the Gmail trigger, or Gmail returns 'Requested entity was not found'."
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "addLabels",
+        "messageId": "={{ $('New or Known?').item.json.messageId }}",
+        "labelIds": "={{ [$('New or Known?').item.json.leadLabelId] }}"
+      },
+      "id": "1ead0000-0000-4000-8000-000000000021",
+      "name": "Label as Lead",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        3280,
+        -180
+      ],
+      "onError": "continueRegularOutput",
+      "notes": "Must use the same Gmail credential as the Gmail trigger, or Gmail returns 'Requested entity was not found'."
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('New or Known?').item.json.email }}",
+        "subject": "={{ $('New or Known?').item.json.welcomeSubject }}",
+        "emailType": "text",
+        "message": "={{ $('New or Known?').item.json.welcomeMessage }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "1ead0000-0000-4000-8000-000000000022",
+      "name": "Send Welcome Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        3040,
+        20
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "content": "## Lead capture to CRM + welcome email\nLeads come from **your web form** or **your inbox** (Claude Haiku picks out real sales inquiries and their details).\n\nNew leads are added to a Google Sheet CRM, you get a notification, and they get a welcome email. Known contacts just get their **Last contact** updated.\n\n1. Create the **Leads** sheet (columns in the README)\n2. Fill in **Settings**\n3. Connect Gmail, Google Sheets and Anthropic credentials\n4. Test with the form's Test URL and a test email, then activate",
+        "height": 400,
+        "width": 420
+      },
+      "id": "1ead0000-0000-4000-8000-000000000023",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -620
+      ]
+    }
+  ],
+  "connections": {
+    "Website Form": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "New Email": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings": {
+      "main": [
+        [
+          {
+            "node": "Prepare Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Lead": {
+      "main": [
+        [
+          {
+            "node": "Route by Source",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Source": {
+      "main": [
+        [
+          {
+            "node": "Skipped",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Lead",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Extract Lead (AI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anthropic Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Extract Lead (AI)",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lead Schema": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Extract Lead (AI)",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Lead (AI)": {
+      "main": [
+        [
+          {
+            "node": "Is a Lead?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is a Lead?": {
+      "main": [
+        [
+          {
+            "node": "Lead",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Not a Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lead": {
+      "main": [
+        [
+          {
+            "node": "Read Existing Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Existing Leads": {
+      "main": [
+        [
+          {
+            "node": "New or Known?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "New or Known?": {
+      "main": [
+        [
+          {
+            "node": "Is New?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is New?": {
+      "main": [
+        [
+          {
+            "node": "Add to CRM",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Last Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add to CRM": {
+      "main": [
+        [
+          {
+            "node": "Notify Me",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Came by Email?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Came by Email?": {
+      "main": [
+        [
+          {
+            "node": "Reply with Welcome",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Welcome Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reply with Welcome": {
+      "main": [
+        [
+          {
+            "node": "Label as Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
