@@ -51,12 +51,12 @@ Each idea lists the n8n nodes it would most likely use. These are starting point
 
 ## Sales and customers
 
-- **Lead capture.** Capture leads from web forms or email into a CRM, then send a welcome email.
-  *Nodes:* Webhook / Form Trigger or Gmail Trigger, Anthropic (extract fields), HubSpot / Pipedrive / Google Sheets, Gmail.
-- **Support ticket routing.** Route support tickets to the right person and send an automatic acknowledgement, building on the [email triage](../templates/email-triage-auto-reply-or-approval/) template.
-  *Nodes:* Gmail Trigger or helpdesk Webhook, Anthropic (classify), Switch, Slack, Gmail (acknowledge).
-- **Overdue invoice reminders.** Send polite reminders for unpaid invoices past their due date.
-  *Nodes:* Schedule Trigger, Google Sheets / Stripe / QuickBooks, Filter (overdue), Gmail.
+- **✅ Built: Lead capture.** Capture leads from web forms or email into a CRM, then send a welcome email. See [Lead capture to CRM](../templates/lead-capture-crm-welcome/).
+  *Nodes:* Form Trigger, Gmail Trigger, Anthropic (extract fields), Google Sheets, Gmail.
+- **✅ Built: Support ticket routing.** Route support tickets to the right person and send an automatic acknowledgement, building on the [email triage](../templates/email-triage-auto-reply-or-approval/) template. See [Support ticket routing](../templates/support-ticket-routing/).
+  *Nodes:* Gmail Trigger, Anthropic (classify), Switch, Gmail (notify, acknowledge), Slack (optional).
+- **✅ Built: Overdue invoice reminders.** Send polite reminders for unpaid invoices past their due date. See [Overdue invoice reminders](../templates/overdue-invoice-reminders/).
+  *Nodes:* Schedule Trigger, Google Sheets, Code (overdue check), Gmail.
 
 ## Suggested next templates
 

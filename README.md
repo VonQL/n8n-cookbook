@@ -29,6 +29,14 @@ templates/
 
 See [docs/automation-ideas.md](docs/automation-ideas.md) for a backlog of office automations that would make good templates, with the ones already built marked.
 
+## Templates
+
+### Sales and customers
+
+- [Lead capture to CRM, with welcome email](templates/lead-capture-crm-welcome/): leads from a web form or your inbox go into a Google Sheets CRM and get a welcome email.
+- [Support ticket routing](templates/support-ticket-routing/): sends each support email to the right team, flags urgent ones and acknowledges the customer with a ticket number.
+- [Overdue invoice reminders](templates/overdue-invoice-reminders/): friendly, then firmer, reminders for unpaid invoices past their due date.
+
 ## Adding a template
 
 1. In n8n, open the workflow and choose **Download** (or select all nodes and copy).
