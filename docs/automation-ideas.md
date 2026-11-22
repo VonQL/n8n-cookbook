@@ -11,16 +11,16 @@ Each idea lists the n8n nodes it would most likely use. These are starting point
 | [Email opportunity auto-reply](../templates/email-opportunity-auto-reply/) | Auto-acknowledges genuine business opportunities and ignores ads, newsletters and spam |
 | [Human-in-the-loop email reply](../templates/email-human-in-the-loop-reply/) | Drafts replies to sensitive emails and waits for your approval before sending |
 | [Email triage: auto-reply or ask me first](../templates/email-triage-auto-reply-or-approval/) | Combines both: sorts every email into "needs me", "opportunity" or "ignore" |
+| [Morning inbox digest](../templates/email-morning-inbox-digest/) | Sends one Telegram message each morning summarizing the last day's inbox |
+| [Save email attachments to Drive](../templates/email-attachments-to-drive/) | Saves attachments to a Google Drive folder and logs each one in a sheet |
+| [Follow-up reminders](../templates/email-follow-up-reminders/) | Reminds you on Telegram about sent emails that got no reply, with a suggested follow-up |
 
 ## Email and communication
 
-- **✅ Built: Auto-reply to opportunities and approve sensitive replies.** See the three templates above.
-- **Morning inbox digest.** Summarize the last day's inbox into one digest sent to Telegram or Slack.
-  *Nodes:* Schedule Trigger, Gmail (get many), Anthropic / AI Agent, Telegram or Slack.
-- **Save attachments to Drive.** Save email attachments such as invoices and receipts to Google Drive, then log each one in a sheet.
-  *Nodes:* Gmail Trigger (download attachments), IF / Filter, Google Drive (upload), Google Sheets (append row).
-- **Follow-up reminders.** Remind you about sent emails that got no reply within X days.
-  *Nodes:* Schedule Trigger, Gmail (search sent mail), Gmail (get thread), Code / Filter, Slack, Telegram or Gmail (send).
+- **✅ Built: Auto-reply to opportunities and approve sensitive replies.** See the first three templates above.
+- **✅ Built: Morning inbox digest.** Summarize the last day's inbox into one digest sent to Telegram. See [email-morning-inbox-digest](../templates/email-morning-inbox-digest/).
+- **✅ Built: Save attachments to Drive.** Save email attachments such as invoices and receipts to Google Drive, then log each one in a sheet. See [email-attachments-to-drive](../templates/email-attachments-to-drive/).
+- **✅ Built: Follow-up reminders.** Remind you about sent emails that got no reply within X days. See [email-follow-up-reminders](../templates/email-follow-up-reminders/).
 
 ## Meetings and calendar
 
