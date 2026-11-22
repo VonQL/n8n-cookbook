@@ -14,6 +14,14 @@ templates/
 - One folder per template, named in `kebab-case`.
 - `templates/_example-template/` shows the expected shape. Copy it to start a new one.
 
+## Templates
+
+### Documents and data
+
+- [Invoice and receipt PDFs to Google Sheets](templates/invoice-receipt-pdf-to-sheets/): logs invoice and receipt data from Gmail PDF attachments.
+- [Recurring report from Google Sheets](templates/recurring-sheets-report/): weekly or monthly report emailed from a sheet.
+- [Form submissions to documents](templates/form-to-document/): turns a form into a quote, contract or certificate PDF.
+
 ## Ideas
 
 See [docs/automation-ideas.md](docs/automation-ideas.md) for a backlog of office automations that would make good templates, with the ones already built marked.

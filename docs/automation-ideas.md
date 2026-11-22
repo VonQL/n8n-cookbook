@@ -11,6 +11,9 @@ Each idea lists the n8n nodes it would most likely use. These are starting point
 | [Email opportunity auto-reply](../templates/email-opportunity-auto-reply/) | Auto-acknowledges genuine business opportunities and ignores ads, newsletters and spam |
 | [Human-in-the-loop email reply](../templates/email-human-in-the-loop-reply/) | Drafts replies to sensitive emails and waits for your approval before sending |
 | [Email triage: auto-reply or ask me first](../templates/email-triage-auto-reply-or-approval/) | Combines both: sorts every email into "needs me", "opportunity" or "ignore" |
+| [Invoice and receipt PDFs to Google Sheets](../templates/invoice-receipt-pdf-to-sheets/) | Reads PDF attachments from Gmail and logs vendor, dates, tax and total as one row each |
+| [Recurring report from Google Sheets](../templates/recurring-sheets-report/) | Weekly or monthly totals, breakdown and comparison emailed with a short AI summary |
+| [Form submissions to documents](../templates/form-to-document/) | Fills a Google Docs quote, contract or certificate template from a form and emails the PDF |
 
 ## Email and communication
 
@@ -33,11 +36,11 @@ Each idea lists the n8n nodes it would most likely use. These are starting point
 
 ## Documents and data
 
-- **Invoice and receipt extraction.** Pull invoice or receipt data from PDFs into a spreadsheet for expense reports.
+- **✅ Built: Invoice and receipt extraction.** See [invoice-receipt-pdf-to-sheets](../templates/invoice-receipt-pdf-to-sheets/). Pull invoice or receipt data from PDFs into a spreadsheet for expense reports.
   *Nodes:* Gmail Trigger or Google Drive Trigger, Extract from File (PDF), Anthropic (structured output), Google Sheets.
-- **Recurring reports.** Generate weekly or monthly reports from Sheets or a database.
+- **✅ Built: Recurring reports.** See [recurring-sheets-report](../templates/recurring-sheets-report/). Generate weekly or monthly reports from Sheets or a database.
   *Nodes:* Schedule Trigger, Google Sheets / Postgres / MySQL, Code or Summarize, Anthropic (narrative), Gmail or Slack.
-- **Form submissions to documents.** Turn form submissions into documents such as contracts, quotes and certificates.
+- **✅ Built: Form submissions to documents.** See [form-to-document](../templates/form-to-document/). Turn form submissions into documents such as contracts, quotes and certificates.
   *Nodes:* n8n Form Trigger or Google Forms / Typeform Trigger, Google Docs (copy template, replace text), Google Drive (export PDF), Gmail.
 
 ## Approvals and HR

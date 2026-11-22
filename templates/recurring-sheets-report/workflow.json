@@ -1,0 +1,385 @@
+{
+  "name": "Recurring report from Google Sheets",
+  "nodes": [
+    {
+      "id": "2b8d0000-0000-4000-8000-000000000001",
+      "name": "Every Monday 8 AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "weeksInterval": 1,
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "notes": "For a monthly report, change to Months, day 1, and set period to 'month' in Settings."
+    },
+    {
+      "id": "2b8d0000-0000-4000-8000-000000000002",
+      "name": "Settings",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "s1",
+              "name": "reportTitle",
+              "value": "Weekly expenses report",
+              "type": "string"
+            },
+            {
+              "id": "s2",
+              "name": "period",
+              "value": "week",
+              "type": "string"
+            },
+            {
+              "id": "s3",
+              "name": "spreadsheetId",
+              "value": "REPLACE_ME_SPREADSHEET_ID",
+              "type": "string"
+            },
+            {
+              "id": "s4",
+              "name": "sheetName",
+              "value": "Expenses",
+              "type": "string"
+            },
+            {
+              "id": "s5",
+              "name": "dateColumn",
+              "value": "Invoice Date",
+              "type": "string"
+            },
+            {
+              "id": "s6",
+              "name": "amountColumn",
+              "value": "Total",
+              "type": "string"
+            },
+            {
+              "id": "s7",
+              "name": "groupColumn",
+              "value": "Category",
+              "type": "string"
+            },
+            {
+              "id": "s8",
+              "name": "labelColumn",
+              "value": "Vendor",
+              "type": "string"
+            },
+            {
+              "id": "s9",
+              "name": "currency",
+              "value": "USD",
+              "type": "string"
+            },
+            {
+              "id": "s10",
+              "name": "dateOrder",
+              "value": "MDY",
+              "type": "string"
+            },
+            {
+              "id": "s11",
+              "name": "sendTo",
+              "value": "REPLACE_ME@example.com",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "notes": "The defaults match the sheet made by the invoice-receipt-pdf-to-sheets template. Change the column names to report on any sheet."
+    },
+    {
+      "id": "2b8d0000-0000-4000-8000-000000000003",
+      "name": "Read Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $json.spreadsheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $json.sheetName }}",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "2b8d0000-0000-4000-8000-000000000004",
+      "name": "Calculate Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Stop early with a clear message if Settings still holds the template placeholders.\nfunction checkSettings(s, keys) {\n  const unset = keys.filter(k => !String(s[k] ?? '').trim() || String(s[k]).includes('REPLACE_ME'));\n  if (unset.length) {\n    throw new Error('Open the Settings node and fill in: ' + unset.join(', ') + '. They still contain REPLACE_ME placeholders.');\n  }\n}\n\n// Work out the last full period (week or month) and the one before it,\n// then total the rows in each. Numbers are computed here, never by the AI.\nconst s = $('Settings').first().json;\ncheckSettings(s, ['spreadsheetId', 'sheetName', 'sendTo']);\nconst period = String(s.period || 'week').toLowerCase() === 'month' ? 'month' : 'week';\n\nconst rows = $input.all().map(i => i.json).filter(r => r && Object.keys(r).length > 0);\nif (rows.length && !(s.dateColumn in rows[0])) {\n  throw new Error(`Column \"${s.dateColumn}\" not found in the sheet. Columns are: ${Object.keys(rows[0]).join(', ')}. Fix dateColumn in Settings.`);\n}\nif (rows.length && !(s.amountColumn in rows[0])) {\n  throw new Error(`Column \"${s.amountColumn}\" not found in the sheet. Columns are: ${Object.keys(rows[0]).join(', ')}. Fix amountColumn in Settings.`);\n}\n\n// Dates: ISO (2026-11-03), Sheets serial numbers (46329), or 11/3/2026 read as dateOrder (MDY or DMY).\nfunction parseDate(v) {\n  if (v === null || v === undefined || v === '') return null;\n  if (typeof v === 'number' || /^\\d{5}(\\.\\d+)?$/.test(String(v))) {\n    return DateTime.fromMillis(Math.round((Number(v) - 25569) * 86400000), { zone: 'utc' }).setZone('local', { keepLocalTime: true });\n  }\n  const t = String(v).trim();\n  let d = DateTime.fromISO(t);\n  if (d.isValid) return d;\n  const m = t.match(/^(\\d{1,2})[\\/.\\-](\\d{1,2})[\\/.\\-](\\d{2,4})/);\n  if (m) {\n    const [a, b] = [Number(m[1]), Number(m[2])];\n    let y = Number(m[3]); if (y < 100) y += 2000;\n    const dmy = String(s.dateOrder || 'MDY').toUpperCase() === 'DMY';\n    d = DateTime.fromObject({ year: y, month: dmy ? b : a, day: dmy ? a : b });\n    if (d.isValid) return d;\n  }\n  d = DateTime.fromJSDate(new Date(t));\n  return d.isValid ? d : null;\n}\n\n// Amounts: 1234.5, \"$1,234.50\", \"(45.00)\" for negatives, \"1.234,50\" European style.\nfunction parseAmount(v) {\n  if (typeof v === 'number') return v;\n  let t = String(v ?? '').trim();\n  if (!t) return null;\n  const negative = /^\\(.*\\)$/.test(t) || /^-/.test(t) || /-$/.test(t);\n  t = t.replace(/[^\\d.,]/g, '');\n  if (/,\\d{1,2}$/.test(t) && !/\\.\\d{1,2}$/.test(t)) t = t.replace(/\\./g, '').replace(',', '.');\n  else t = t.replace(/,/g, '');\n  const n = parseFloat(t);\n  if (isNaN(n)) return null;\n  return negative ? -n : n;\n}\n\nconst now = DateTime.now();\nconst start = now.startOf(period).minus({ [period + 's']: 1 });\nconst end = start.plus({ [period + 's']: 1 });\nconst prevStart = start.minus({ [period + 's']: 1 });\n\nconst current = [], previous = [];\nlet skipped = 0;\nfor (const r of rows) {\n  const d = parseDate(r[s.dateColumn]);\n  const amount = parseAmount(r[s.amountColumn]);\n  if (!d || amount === null) { skipped++; continue; }\n  const row = {\n    date: d,\n    amount,\n    group: String(r[s.groupColumn] ?? '').trim() || '(none)',\n    label: String(r[s.labelColumn] ?? '').trim(),\n  };\n  if (d >= start && d < end) current.push(row);\n  else if (d >= prevStart && d < start) previous.push(row);\n}\n\nconst sum = list => Math.round(list.reduce((a, r) => a + r.amount, 0) * 100) / 100;\nconst pct = (a, b) => (b ? Math.round(((a - b) / Math.abs(b)) * 1000) / 10 : null);\n\nconst total = sum(current);\nconst prevTotal = sum(previous);\nconst groupNames = [...new Set([...current, ...previous].map(r => r.group))];\nconst groups = groupNames.map(g => {\n  const cur = sum(current.filter(r => r.group === g));\n  const prev = sum(previous.filter(r => r.group === g));\n  return {\n    group: g,\n    total: cur,\n    count: current.filter(r => r.group === g).length,\n    share: total ? Math.round((cur / total) * 1000) / 10 : 0,\n    previous: prev,\n    changePct: pct(cur, prev),\n  };\n}).filter(g => g.total !== 0 || g.previous !== 0).sort((a, b) => b.total - a.total);\n\nconst largest = [...current].sort((a, b) => b.amount - a.amount).slice(0, 5).map(r => ({\n  date: r.date.toISODate(), label: r.label, group: r.group, amount: r.amount,\n}));\n\nconst fmtRange = period === 'week'\n  ? `${start.toFormat('LLL d')} to ${end.minus({ days: 1 }).toFormat('LLL d, yyyy')}`\n  : start.toFormat('LLLL yyyy');\n\nconst stats = {\n  report: s.reportTitle,\n  period: fmtRange,\n  currency: s.currency,\n  total, count: current.length,\n  average: current.length ? Math.round((total / current.length) * 100) / 100 : 0,\n  previousPeriodTotal: prevTotal,\n  previousPeriodCount: previous.length,\n  changePct: pct(total, prevTotal),\n  byGroup: groups.slice(0, 10),\n  largestItems: largest,\n  rowsSkipped: skipped,\n};\n\nreturn [{ json: { ...stats, hasData: current.length > 0 || previous.length > 0, statsJson: JSON.stringify(stats, null, 2) } }];"
+      }
+    },
+    {
+      "id": "2b8d0000-0000-4000-8000-000000000005",
+      "name": "Any Rows?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.hasData }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "2b8d0000-0000-4000-8000-000000000006",
+      "name": "Write Summary",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.5,
+      "position": [
+        1100,
+        -100
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "=Report data (JSON):\n{{ $json.statsJson }}",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "=You write the short summary at the top of a recurring business report emailed to a busy small business owner.\n\nRules:\n- 3 to 5 plain sentences. No headings, bullet points, markdown or greeting.\n- Use only the numbers in the data. Never calculate new totals or invent figures, causes or trends.\n- Lead with the total and how it compares with the previous period (changePct is a percentage; null means there is no previous data to compare).\n- Then name the biggest groups and anything unusual: a group that grew or shrank a lot, or one item that is a large part of the total.\n- Write amounts with the currency, e.g. \"USD 1,240.50\".\n- If rowsSkipped is above 0, end with one sentence saying how many rows were skipped because their date or amount could not be read."
+            }
+          ]
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput",
+      "notes": "If Claude is unavailable the report is still sent, without the summary."
+    },
+    {
+      "id": "2b8d0000-0000-4000-8000-000000000007",
+      "name": "Anthropic Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [
+        1100,
+        120
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "claude-haiku-5-5",
+          "cachedResultName": "Claude Haiku 5.5"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "2b8d0000-0000-4000-8000-000000000008",
+      "name": "Build Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Build the HTML email: AI summary on top, then the exact numbers in tables.\nconst r = $('Calculate Report').first().json;\nconst summary = String(($json && $json.text) || '').trim();\n\nconst esc = v => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nconst money = n => {\n  try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: r.currency || 'USD' }).format(n); }\n  catch (e) { return (r.currency || '') + ' ' + Number(n).toFixed(2); }\n};\nconst change = p => (p === null || p === undefined ? '–' : (p > 0 ? '+' : '') + p + '%');\nconst td = 'style=\"padding:4px 10px;border-bottom:1px solid #eee\"';\nconst tdr = 'style=\"padding:4px 10px;border-bottom:1px solid #eee;text-align:right\"';\nconst th = 'style=\"padding:4px 10px;border-bottom:2px solid #ccc;text-align:left\"';\n\nlet body;\nif (!r.hasData) {\n  body = `<p>No rows were dated in ${esc(r.period)} or the period before.</p>` +\n    (r.rowsSkipped ? `<p>${r.rowsSkipped} rows were skipped because their date or amount could not be read. Check the dateColumn, amountColumn and dateOrder settings.</p>` : '');\n} else {\n  const groups = r.byGroup.map(g =>\n    `<tr><td ${td}>${esc(g.group)}</td><td ${tdr}>${money(g.total)}</td><td ${tdr}>${g.count}</td><td ${tdr}>${g.share}%</td><td ${tdr}>${change(g.changePct)}</td></tr>`).join('');\n  const largest = r.largestItems.map(i =>\n    `<tr><td ${td}>${esc(i.date)}</td><td ${td}>${esc(i.label)}</td><td ${td}>${esc(i.group)}</td><td ${tdr}>${money(i.amount)}</td></tr>`).join('');\n\n  body = (summary ? `<p style=\"font-size:15px;line-height:1.5\">${esc(summary)}</p>` : '') +\n    `<table style=\"border-collapse:collapse;margin:12px 0\">\n      <tr><td ${td}>Total</td><td ${tdr}><b>${money(r.total)}</b></td></tr>\n      <tr><td ${td}>Items</td><td ${tdr}>${r.count}</td></tr>\n      <tr><td ${td}>Average</td><td ${tdr}>${money(r.average)}</td></tr>\n      <tr><td ${td}>Previous period</td><td ${tdr}>${money(r.previousPeriodTotal)} (${r.previousPeriodCount} items)</td></tr>\n      <tr><td ${td}>Change</td><td ${tdr}>${change(r.changePct)}</td></tr>\n    </table>` +\n    (groups ? `<h3 style=\"margin:18px 0 6px\">By group</h3><table style=\"border-collapse:collapse\"><tr><th ${th}>Group</th><th ${th}>Total</th><th ${th}>Items</th><th ${th}>Share</th><th ${th}>vs previous</th></tr>${groups}</table>` : '') +\n    (largest ? `<h3 style=\"margin:18px 0 6px\">Largest items</h3><table style=\"border-collapse:collapse\"><tr><th ${th}>Date</th><th ${th}>Item</th><th ${th}>Group</th><th ${th}>Amount</th></tr>${largest}</table>` : '') +\n    (r.rowsSkipped ? `<p style=\"color:#666\">${r.rowsSkipped} rows were skipped because their date or amount could not be read.</p>` : '');\n}\n\nconst html = `<div style=\"font-family:Arial,sans-serif;font-size:14px;color:#222;max-width:680px\">\n<h2 style=\"margin:0 0 4px\">${esc(r.report)}</h2>\n<p style=\"color:#666;margin:0 0 14px\">${esc(r.period)}</p>\n${body}\n</div>`;\n\nreturn [{ json: { subject: `${r.report}: ${r.period}`, html } }];"
+      }
+    },
+    {
+      "id": "2b8d0000-0000-4000-8000-000000000009",
+      "name": "Send Report",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1560,
+        0
+      ],
+      "parameters": {
+        "sendTo": "={{ $('Settings').first().json.sendTo }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "html",
+        "message": "={{ $json.html }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "2b8d0000-0000-4000-8000-000000000010",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -440
+      ],
+      "parameters": {
+        "content": "## Recurring report from Google Sheets\nEvery Monday it totals last week's rows (or last month's), compares them with the period before, groups them by a column of your choice and emails you a report.\n\nThe code does all the maths. Claude Haiku only writes the short summary on top.\n\n1. Fill in **Settings** (sheet, column names, recipient)\n2. Connect Google Sheets, Anthropic and Gmail credentials\n3. Run it once by hand, then activate",
+        "height": 380,
+        "width": 400
+      }
+    }
+  ],
+  "connections": {
+    "Every Monday 8 AM": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings": {
+      "main": [
+        [
+          {
+            "node": "Read Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Sheet": {
+      "main": [
+        [
+          {
+            "node": "Calculate Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Report": {
+      "main": [
+        [
+          {
+            "node": "Any Rows?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Rows?": {
+      "main": [
+        [
+          {
+            "node": "Write Summary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anthropic Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Write Summary",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Summary": {
+      "main": [
+        [
+          {
+            "node": "Build Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Email": {
+      "main": [
+        [
+          {
+            "node": "Send Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
