@@ -1,0 +1,518 @@
+{
+  "name": "Invoice and receipt PDFs to Google Sheets",
+  "nodes": [
+    {
+      "id": "1a7c0000-0000-4000-8000-000000000001",
+      "name": "New Email",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "simple": false,
+        "filters": {
+          "q": "has:attachment filename:pdf -in:sent -in:chats"
+        },
+        "options": {
+          "downloadAttachments": true,
+          "dataPropertyAttachmentsPrefixName": "attachment_"
+        }
+      }
+    },
+    {
+      "id": "1a7c0000-0000-4000-8000-000000000002",
+      "name": "Settings",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "s1",
+              "name": "spreadsheetId",
+              "value": "REPLACE_ME_SPREADSHEET_ID",
+              "type": "string"
+            },
+            {
+              "id": "s2",
+              "name": "sheetName",
+              "value": "Expenses",
+              "type": "string"
+            },
+            {
+              "id": "s3",
+              "name": "minConfidence",
+              "value": 0.7,
+              "type": "number"
+            },
+            {
+              "id": "s4",
+              "name": "processedLabelId",
+              "value": "REPLACE_ME_LABEL_ID",
+              "type": "string"
+            },
+            {
+              "id": "s5",
+              "name": "maxChars",
+              "value": 15000,
+              "type": "number"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "1a7c0000-0000-4000-8000-000000000003",
+      "name": "Split PDFs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Stop early with a clear message if Settings still holds the template placeholders.\nfunction checkSettings(s, keys) {\n  const unset = keys.filter(k => !String(s[k] ?? '').trim() || String(s[k]).includes('REPLACE_ME'));\n  if (unset.length) {\n    throw new Error('Open the Settings node and fill in: ' + unset.join(', ') + '. They still contain REPLACE_ME placeholders.');\n  }\n}\n\n// One output item per PDF attachment, so an email with three receipts gives three rows.\n// The Gmail Trigger stores attachments as binary properties named attachment_0, attachment_1, ...\nconst emails = $('New Email').all();\nconst out = [];\n\n$input.all().forEach((item, i) => {\n  const s = item.json;\n  if (i === 0) checkSettings(s, ['spreadsheetId', 'sheetName']);\n\n  // Settings may not pass binary data along, so fall back to the trigger's own item.\n  const binary = item.binary || (emails[i] && emails[i].binary) || {};\n  const sender = (s.from && s.from.value && s.from.value[0]) || {};\n\n  for (const [key, file] of Object.entries(binary)) {\n    const name = String(file.fileName || key);\n    const isPdf = /pdf/i.test(file.mimeType || '') || /\\.pdf$/i.test(name);\n    if (!isPdf) continue; // skip logos, signature images, .ics files...\n\n    out.push({\n      json: {\n        messageId: s.id,\n        threadId: s.threadId,\n        fromAddr: String(sender.address || '').toLowerCase(),\n        fromName: sender.name || '',\n        subject: s.subject || '',\n        receivedAt: s.date || '',\n        fileName: name,\n        minConfidence: s.minConfidence,\n        processedLabelId: s.processedLabelId,\n        maxChars: s.maxChars,\n      },\n      binary: { data: file },\n      pairedItem: { item: i },\n    });\n  }\n});\n\nreturn out;"
+      }
+    },
+    {
+      "id": "1a7c0000-0000-4000-8000-000000000004",
+      "name": "Read PDF Text",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        660,
+        0
+      ],
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "data",
+        "options": {}
+      },
+      "onError": "continueRegularOutput",
+      "notes": "Password-protected or broken PDFs don't stop the run: they are logged with status 'check'."
+    },
+    {
+      "id": "1a7c0000-0000-4000-8000-000000000005",
+      "name": "Prepare Text",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Clean the extracted text and decide whether there is enough of it to read.\n// Scanned PDFs (photos of receipts) have no text layer and come out empty.\nconst meta = $('Split PDFs').item.json;\nconst raw = String($json.text || '');\nconst text = raw.replace(/[ \\t]+/g, ' ').replace(/\\n{3,}/g, '\\n\\n').trim();\nconst error = $json.error ? String($json.error.message || $json.error) : '';\n\nreturn {\n  json: {\n    ...meta,\n    text: text.slice(0, Number(meta.maxChars) || 15000),\n    hasText: text.length >= 40,\n    problem: error ? 'could not read PDF: ' + error : (text.length >= 40 ? '' : 'no text found (scanned image?)'),\n  },\n};"
+      }
+    },
+    {
+      "id": "1a7c0000-0000-4000-8000-000000000006",
+      "name": "Has Text?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1100,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.hasText }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "1a7c0000-0000-4000-8000-000000000007",
+      "name": "Extract Invoice Data",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.5,
+      "position": [
+        1340,
+        -100
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "=File name: {{ $json.fileName }}\nEmail from: {{ $json.fromName }} <{{ $json.fromAddr }}>\nEmail subject: {{ $json.subject }}\n\nPDF text:\n{{ $json.text }}",
+        "hasOutputParser": true,
+        "messages": {
+          "messageValues": [
+            {
+              "message": "=You read the text of a PDF attached to an email and extract invoice or receipt data for an expense spreadsheet.\n\nRules:\n- \"document_type\": \"invoice\" (a bill asking for payment), \"receipt\" (proof a payment was made), \"credit_note\" (refund or credit), or \"not_invoice\" (anything else: brochures, contracts, reports, tickets without a price, newsletters).\n- Copy values exactly as they appear. Never guess or invent a number, date or ID. Use null for anything not in the text.\n- Dates as YYYY-MM-DD. If a date is ambiguous (e.g. 03/04/2026) use the vendor's country or currency to decide, and mention it in \"notes\".\n- Amounts as plain numbers without currency symbols or thousands separators (1234.5, not \"$1,234.50\"). \"total\" is the final amount due or paid, including tax. Credit notes have positive amounts; \"document_type\" shows they are credits.\n- \"currency\": ISO 4217 code (USD, EUR, GBP, PHP...). Infer from symbols only when unambiguous, otherwise null.\n- \"vendor_name\": the business that issued the document, not the customer it is addressed to.\n- \"category\": the best expense category from the list.\n- \"description\": what was bought, max 12 words.\n- \"payment_status\": \"paid\" if the document says paid, shows a payment, or is a receipt; \"unpaid\" if it asks for payment; otherwise \"unknown\".\n- \"confidence\": 0 to 1, how sure you are that vendor, date and total are all correct. Lower it for garbled text, multiple invoices in one PDF, or totals that don't add up.\n- \"notes\": anything a bookkeeper should check, or an empty string."
+            }
+          ]
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "1a7c0000-0000-4000-8000-000000000008",
+      "name": "Anthropic Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [
+        1300,
+        120
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "claude-haiku-5-5",
+          "cachedResultName": "Claude Haiku 5.5"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "1a7c0000-0000-4000-8000-000000000009",
+      "name": "Invoice Schema",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [
+        1460,
+        120
+      ],
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"document_type\": {\n      \"type\": \"string\",\n      \"enum\": [\n        \"invoice\",\n        \"receipt\",\n        \"credit_note\",\n        \"not_invoice\"\n      ]\n    },\n    \"vendor_name\": {\n      \"type\": [\n        \"string\",\n        \"null\"\n      ]\n    },\n    \"vendor_tax_id\": {\n      \"type\": [\n        \"string\",\n        \"null\"\n      ]\n    },\n    \"invoice_number\": {\n      \"type\": [\n        \"string\",\n        \"null\"\n      ]\n    },\n    \"invoice_date\": {\n      \"type\": [\n        \"string\",\n        \"null\"\n      ],\n      \"description\": \"YYYY-MM-DD\"\n    },\n    \"due_date\": {\n      \"type\": [\n        \"string\",\n        \"null\"\n      ],\n      \"description\": \"YYYY-MM-DD\"\n    },\n    \"currency\": {\n      \"type\": [\n        \"string\",\n        \"null\"\n      ]\n    },\n    \"subtotal\": {\n      \"type\": [\n        \"number\",\n        \"null\"\n      ]\n    },\n    \"tax\": {\n      \"type\": [\n        \"number\",\n        \"null\"\n      ]\n    },\n    \"total\": {\n      \"type\": [\n        \"number\",\n        \"null\"\n      ]\n    },\n    \"payment_status\": {\n      \"type\": \"string\",\n      \"enum\": [\n        \"paid\",\n        \"unpaid\",\n        \"unknown\"\n      ]\n    },\n    \"category\": {\n      \"type\": \"string\",\n      \"enum\": [\n        \"software_subscriptions\",\n        \"hardware_equipment\",\n        \"office_supplies\",\n        \"travel\",\n        \"meals\",\n        \"utilities_telecom\",\n        \"rent\",\n        \"professional_services\",\n        \"advertising_marketing\",\n        \"shipping\",\n        \"training\",\n        \"taxes_fees\",\n        \"other\"\n      ]\n    },\n    \"description\": {\n      \"type\": \"string\"\n    },\n    \"confidence\": {\n      \"type\": \"number\",\n      \"description\": \"0 to 1\"\n    },\n    \"notes\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"document_type\",\n    \"vendor_name\",\n    \"vendor_tax_id\",\n    \"invoice_number\",\n    \"invoice_date\",\n    \"due_date\",\n    \"currency\",\n    \"subtotal\",\n    \"tax\",\n    \"total\",\n    \"payment_status\",\n    \"category\",\n    \"description\",\n    \"confidence\",\n    \"notes\"\n  ]\n}"
+      }
+    },
+    {
+      "id": "1a7c0000-0000-4000-8000-000000000010",
+      "name": "Is Invoice or Receipt?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1660,
+        -100
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.output.document_type }}",
+              "rightValue": "not_invoice",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "1a7c0000-0000-4000-8000-000000000011",
+      "name": "Not an Invoice",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1880,
+        40
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "1a7c0000-0000-4000-8000-000000000012",
+      "name": "Build Row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1880,
+        -200
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "\n// One spreadsheet row. Column names must match the header row of your sheet exactly.\n// \"Key\" stops the same invoice being added twice (e.g. a resent email).\nfunction gmailLink(id) { return id ? 'https://mail.google.com/mail/u/0/#all/' + id : ''; }\n\nconst m = $('Prepare Text').item.json;\nconst o = $json.output || {};\nconst min = Number(m.minConfidence) || 0.7;\n\nconst checks = [];\nif (o.total === null || o.total === undefined) checks.push('no total');\nif (!o.invoice_date) checks.push('no date');\nif (!o.vendor_name) checks.push('no vendor');\nif ((o.confidence ?? 0) < min) checks.push('low confidence');\nif (o.notes) checks.push(o.notes);\n\nconst vendor = String(o.vendor_name || '').trim();\nconst number = String(o.invoice_number || '').trim();\nconst key = vendor && number\n  ? (vendor + '|' + number).toLowerCase().replace(/\\s+/g, ' ')\n  : m.messageId + '|' + m.fileName;\n\nreturn {\n  json: {\n    'Key': key,\n    'Status': checks.length ? 'check: ' + checks.join('; ') : 'ok',\n    'Type': o.document_type,\n    'Vendor': vendor,\n    'Invoice Number': number,\n    'Invoice Date': o.invoice_date || '',\n    'Due Date': o.due_date || '',\n    'Currency': o.currency || '',\n    'Subtotal': o.subtotal ?? '',\n    'Tax': o.tax ?? '',\n    'Total': o.total ?? '',\n    'Payment Status': o.payment_status,\n    'Category': o.category,\n    'Description': o.description,\n    'Vendor Tax ID': o.vendor_tax_id || '',\n    'Confidence': o.confidence,\n    'File Name': m.fileName,\n    'From': m.fromAddr,\n    'Email Subject': m.subject,\n    'Received': m.receivedAt,\n    'Email Link': gmailLink(m.messageId),\n  },\n};"
+      }
+    },
+    {
+      "id": "1a7c0000-0000-4000-8000-000000000013",
+      "name": "Unreadable PDF",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "\n// One spreadsheet row. Column names must match the header row of your sheet exactly.\n// \"Key\" stops the same invoice being added twice (e.g. a resent email).\nfunction gmailLink(id) { return id ? 'https://mail.google.com/mail/u/0/#all/' + id : ''; }\n\n// No readable text: log the file so nothing is lost, and flag it for a person.\nconst m = $json;\nreturn {\n  json: {\n    'Key': m.messageId + '|' + m.fileName,\n    'Status': 'check: ' + m.problem,\n    'Type': '', 'Vendor': '', 'Invoice Number': '', 'Invoice Date': '', 'Due Date': '',\n    'Currency': '', 'Subtotal': '', 'Tax': '', 'Total': '', 'Payment Status': '',\n    'Category': '', 'Description': '', 'Vendor Tax ID': '', 'Confidence': '',\n    'File Name': m.fileName,\n    'From': m.fromAddr,\n    'Email Subject': m.subject,\n    'Received': m.receivedAt,\n    'Email Link': gmailLink(m.messageId),\n  },\n};"
+      }
+    },
+    {
+      "id": "1a7c0000-0000-4000-8000-000000000014",
+      "name": "Add to Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        2120,
+        0
+      ],
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Settings').first().json.spreadsheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $('Settings').first().json.sheetName }}",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "Key"
+          ],
+          "schema": []
+        },
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "notes": "Updates the row with the same Key instead of adding a duplicate."
+    },
+    {
+      "id": "1a7c0000-0000-4000-8000-000000000015",
+      "name": "Label as Processed",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2340,
+        0
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "addLabels",
+        "messageId": "={{ $('Prepare Text').item.json.messageId }}",
+        "labelIds": "={{ [$('Settings').first().json.processedLabelId] }}"
+      },
+      "onError": "continueRegularOutput",
+      "notes": "Optional. Must use the same Gmail credential as New Email. Skipped quietly if the label ID is not set."
+    },
+    {
+      "id": "1a7c0000-0000-4000-8000-000000000016",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -440
+      ],
+      "parameters": {
+        "content": "## Invoice and receipt PDFs to Google Sheets\nEvery PDF attached to a new email is read by Claude Haiku and logged as one row: vendor, number, dates, currency, subtotal, tax, total, category.\n\nNon-invoice PDFs are skipped. Scanned PDFs and unsure results are still logged, with **Status** starting `check:`.\n\n1. Create the sheet with the header row from the README\n2. Fill in **Settings**\n3. Connect Gmail, Anthropic and Google Sheets credentials\n4. Test with a few emails before activating",
+        "height": 380,
+        "width": 400
+      }
+    }
+  ],
+  "connections": {
+    "New Email": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings": {
+      "main": [
+        [
+          {
+            "node": "Split PDFs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split PDFs": {
+      "main": [
+        [
+          {
+            "node": "Read PDF Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read PDF Text": {
+      "main": [
+        [
+          {
+            "node": "Prepare Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Text": {
+      "main": [
+        [
+          {
+            "node": "Has Text?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Text?": {
+      "main": [
+        [
+          {
+            "node": "Extract Invoice Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Unreadable PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anthropic Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Extract Invoice Data",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Invoice Schema": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Extract Invoice Data",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Invoice Data": {
+      "main": [
+        [
+          {
+            "node": "Is Invoice or Receipt?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Invoice or Receipt?": {
+      "main": [
+        [
+          {
+            "node": "Build Row",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Not an Invoice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Row": {
+      "main": [
+        [
+          {
+            "node": "Add to Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Unreadable PDF": {
+      "main": [
+        [
+          {
+            "node": "Add to Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add to Sheet": {
+      "main": [
+        [
+          {
+            "node": "Label as Processed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

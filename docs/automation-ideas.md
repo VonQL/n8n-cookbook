@@ -14,6 +14,12 @@ Each idea lists the n8n nodes it would most likely use. These are starting point
 | [Morning inbox digest](../templates/email-morning-inbox-digest/) | Sends one Telegram message each morning summarizing the last day's inbox |
 | [Save email attachments to Drive](../templates/email-attachments-to-drive/) | Saves attachments to a Google Drive folder and logs each one in a sheet |
 | [Follow-up reminders](../templates/email-follow-up-reminders/) | Reminds you on Telegram about sent emails that got no reply, with a suggested follow-up |
+| [Invoice and receipt PDFs to Google Sheets](../templates/invoice-receipt-pdf-to-sheets/) | Reads PDF attachments from Gmail and logs vendor, dates, tax and total as one row each |
+| [Recurring report from Google Sheets](../templates/recurring-sheets-report/) | Weekly or monthly totals, breakdown and comparison emailed with a short AI summary |
+| [Form submissions to documents](../templates/form-to-document/) | Fills a Google Docs quote, contract or certificate template from a form and emails the PDF |
+| [Lead capture to CRM, with welcome email](../templates/lead-capture-crm-welcome/) | Puts leads from a web form or your inbox into a Google Sheets CRM and sends a welcome email |
+| [Support ticket routing](../templates/support-ticket-routing/) | Routes each support email to the right team, flags urgent ones and acknowledges the customer |
+| [Overdue invoice reminders](../templates/overdue-invoice-reminders/) | Sends friendly, then firmer, reminders for unpaid invoices past their due date |
 
 ## Email and communication
 
@@ -33,11 +39,11 @@ Each idea lists the n8n nodes it would most likely use. These are starting point
 
 ## Documents and data
 
-- **Invoice and receipt extraction.** Pull invoice or receipt data from PDFs into a spreadsheet for expense reports.
+- **✅ Built: Invoice and receipt extraction.** See [invoice-receipt-pdf-to-sheets](../templates/invoice-receipt-pdf-to-sheets/). Pull invoice or receipt data from PDFs into a spreadsheet for expense reports.
   *Nodes:* Gmail Trigger or Google Drive Trigger, Extract from File (PDF), Anthropic (structured output), Google Sheets.
-- **Recurring reports.** Generate weekly or monthly reports from Sheets or a database.
+- **✅ Built: Recurring reports.** See [recurring-sheets-report](../templates/recurring-sheets-report/). Generate weekly or monthly reports from Sheets or a database.
   *Nodes:* Schedule Trigger, Google Sheets / Postgres / MySQL, Code or Summarize, Anthropic (narrative), Gmail or Slack.
-- **Form submissions to documents.** Turn form submissions into documents such as contracts, quotes and certificates.
+- **✅ Built: Form submissions to documents.** See [form-to-document](../templates/form-to-document/). Turn form submissions into documents such as contracts, quotes and certificates.
   *Nodes:* n8n Form Trigger or Google Forms / Typeform Trigger, Google Docs (copy template, replace text), Google Drive (export PDF), Gmail.
 
 ## Approvals and HR

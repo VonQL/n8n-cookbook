@@ -1,0 +1,507 @@
+{
+  "name": "Form submissions to documents (quotes, contracts, certificates)",
+  "nodes": [
+    {
+      "id": "3c9e0000-0000-4000-8000-000000000001",
+      "name": "Document Request Form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "formTitle": "Request a document",
+        "formDescription": "Fill in the details and we'll prepare your document.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Document type",
+              "fieldType": "dropdown",
+              "requiredField": true,
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Quote"
+                  },
+                  {
+                    "option": "Contract"
+                  },
+                  {
+                    "option": "Certificate"
+                  }
+                ]
+              }
+            },
+            {
+              "fieldLabel": "Client name",
+              "requiredField": true,
+              "placeholder": "Ana Santos"
+            },
+            {
+              "fieldLabel": "Client email",
+              "fieldType": "email",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Company",
+              "placeholder": "Optional"
+            },
+            {
+              "fieldLabel": "Title",
+              "requiredField": true,
+              "placeholder": "Project, service or course name"
+            },
+            {
+              "fieldLabel": "Amount",
+              "fieldType": "number",
+              "placeholder": "Price or fee. Leave empty for certificates"
+            },
+            {
+              "fieldLabel": "Date",
+              "fieldType": "date",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Details",
+              "fieldType": "textarea",
+              "placeholder": "Scope, terms or achievement. Goes into the {{details}} placeholder"
+            }
+          ]
+        },
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "notes": "The form URL is public. Turn on Authentication (Basic Auth) if only your team should use it."
+    },
+    {
+      "id": "3c9e0000-0000-4000-8000-000000000002",
+      "name": "Settings",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "s1",
+              "name": "quoteTemplateId",
+              "value": "REPLACE_ME_DOC_ID",
+              "type": "string"
+            },
+            {
+              "id": "s2",
+              "name": "contractTemplateId",
+              "value": "REPLACE_ME_DOC_ID",
+              "type": "string"
+            },
+            {
+              "id": "s3",
+              "name": "certificateTemplateId",
+              "value": "REPLACE_ME_DOC_ID",
+              "type": "string"
+            },
+            {
+              "id": "s4",
+              "name": "outputFolderId",
+              "value": "REPLACE_ME_FOLDER_ID",
+              "type": "string"
+            },
+            {
+              "id": "s5",
+              "name": "myEmail",
+              "value": "REPLACE_ME@example.com",
+              "type": "string"
+            },
+            {
+              "id": "s6",
+              "name": "senderName",
+              "value": "REPLACE_ME Your Name",
+              "type": "string"
+            },
+            {
+              "id": "s7",
+              "name": "currency",
+              "value": "USD",
+              "type": "string"
+            },
+            {
+              "id": "s8",
+              "name": "sendToClient",
+              "value": false,
+              "type": "boolean"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "3c9e0000-0000-4000-8000-000000000003",
+      "name": "Prepare Document",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Stop early with a clear message if Settings still holds the template placeholders.\nfunction checkSettings(s, keys) {\n  const unset = keys.filter(k => !String(s[k] ?? '').trim() || String(s[k]).includes('REPLACE_ME'));\n  if (unset.length) {\n    throw new Error('Open the Settings node and fill in: ' + unset.join(', ') + '. They still contain REPLACE_ME placeholders.');\n  }\n}\n\n// Pick the template for the chosen document type and prepare every placeholder value.\nconst s = $input.first().json;\nconst type = String(s['Document type'] || '').trim();\nconst templateKey = { Quote: 'quoteTemplateId', Contract: 'contractTemplateId', Certificate: 'certificateTemplateId' }[type];\nif (!templateKey) throw new Error('Unknown document type \"' + type + '\". Add it to the form and to this node.');\ncheckSettings(s, ['outputFolderId', 'myEmail', 'senderName', templateKey]);\n\nconst clean = v => String(v ?? '').replace(/\\s+/g, ' ').trim();\nconst clientName = clean(s['Client name']);\nconst clientEmail = clean(s['Client email']).toLowerCase();\nif (!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(clientEmail)) throw new Error('Client email \"' + clientEmail + '\" is not a valid address.');\n\n// Document number like Q-20261122-7K3F: prefix, date, 4 random characters.\nconst prefix = { Quote: 'Q', Contract: 'C', Certificate: 'CERT' }[type];\nconst rand = Math.random().toString(36).slice(2, 6).toUpperCase();\nconst docNumber = `${prefix}-${DateTime.now().toFormat('yyyyLLdd')}-${rand}`;\n\nconst d = DateTime.fromISO(String(s['Date'] || ''));\nconst date = d.isValid ? d.toFormat('LLLL d, yyyy') : clean(s['Date']);\n\nlet amount = '';\nif (s['Amount'] !== undefined && s['Amount'] !== null && s['Amount'] !== '') {\n  const n = Number(s['Amount']);\n  try { amount = new Intl.NumberFormat('en-US', { style: 'currency', currency: s.currency || 'USD' }).format(n); }\n  catch (e) { amount = (s.currency || '') + ' ' + n.toFixed(2); }\n}\n\n// Placeholder -> value. Each {{name}} in the Google Docs template is replaced with its value.\n// Keep this list in sync with the Fill Placeholders node.\nconst values = {\n  doc_type: type,\n  doc_number: docNumber,\n  client_name: clientName,\n  client_email: clientEmail,\n  company: clean(s['Company']),\n  title: clean(s['Title']),\n  amount,\n  date,\n  details: String(s['Details'] || '').trim(),\n  today: DateTime.now().toFormat('LLLL d, yyyy'),\n  sender_name: s.senderName,\n};\n\nreturn [{\n  json: {\n    ...values,\n    templateId: s[templateKey],\n    outputFolderId: s.outputFolderId,\n    fileName: `${type} ${docNumber} - ${clientName}`.replace(/[\\\\/:*?\"<>|]/g, '-'),\n    myEmail: s.myEmail,\n    sendToClient: s.sendToClient === true || String(s.sendToClient).toLowerCase() === 'true',\n  },\n}];"
+      }
+    },
+    {
+      "id": "3c9e0000-0000-4000-8000-000000000004",
+      "name": "Copy Template",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        660,
+        0
+      ],
+      "parameters": {
+        "operation": "copy",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.templateId }}",
+          "mode": "id"
+        },
+        "name": "={{ $json.fileName }}",
+        "sameFolder": false,
+        "driveId": {
+          "__rl": true,
+          "value": "My Drive",
+          "mode": "list",
+          "cachedResultName": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "={{ $json.outputFolderId }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "3c9e0000-0000-4000-8000-000000000005",
+      "name": "Fill Placeholders",
+      "type": "n8n-nodes-base.googleDocs",
+      "typeVersion": 2,
+      "position": [
+        880,
+        0
+      ],
+      "parameters": {
+        "operation": "update",
+        "documentURL": "={{ $json.id }}",
+        "actionsUi": {
+          "actionFields": [
+            {
+              "action": "replaceAll",
+              "text": "{{doc_type}}",
+              "replaceText": "={{ $('Prepare Document').first().json.doc_type }}",
+              "matchCase": true
+            },
+            {
+              "action": "replaceAll",
+              "text": "{{doc_number}}",
+              "replaceText": "={{ $('Prepare Document').first().json.doc_number }}",
+              "matchCase": true
+            },
+            {
+              "action": "replaceAll",
+              "text": "{{client_name}}",
+              "replaceText": "={{ $('Prepare Document').first().json.client_name }}",
+              "matchCase": true
+            },
+            {
+              "action": "replaceAll",
+              "text": "{{client_email}}",
+              "replaceText": "={{ $('Prepare Document').first().json.client_email }}",
+              "matchCase": true
+            },
+            {
+              "action": "replaceAll",
+              "text": "{{company}}",
+              "replaceText": "={{ $('Prepare Document').first().json.company }}",
+              "matchCase": true
+            },
+            {
+              "action": "replaceAll",
+              "text": "{{title}}",
+              "replaceText": "={{ $('Prepare Document').first().json.title }}",
+              "matchCase": true
+            },
+            {
+              "action": "replaceAll",
+              "text": "{{amount}}",
+              "replaceText": "={{ $('Prepare Document').first().json.amount }}",
+              "matchCase": true
+            },
+            {
+              "action": "replaceAll",
+              "text": "{{date}}",
+              "replaceText": "={{ $('Prepare Document').first().json.date }}",
+              "matchCase": true
+            },
+            {
+              "action": "replaceAll",
+              "text": "{{details}}",
+              "replaceText": "={{ $('Prepare Document').first().json.details }}",
+              "matchCase": true
+            },
+            {
+              "action": "replaceAll",
+              "text": "{{today}}",
+              "replaceText": "={{ $('Prepare Document').first().json.today }}",
+              "matchCase": true
+            },
+            {
+              "action": "replaceAll",
+              "text": "{{sender_name}}",
+              "replaceText": "={{ $('Prepare Document').first().json.sender_name }}",
+              "matchCase": true
+            }
+          ]
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "notes": "Plain text fields: the {{name}} values are literal text, not n8n expressions. Don't switch them to Expression mode."
+    },
+    {
+      "id": "3c9e0000-0000-4000-8000-000000000006",
+      "name": "Export PDF",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1100,
+        0
+      ],
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $('Copy Template').first().json.id }}",
+          "mode": "id"
+        },
+        "options": {
+          "googleFileConversion": {
+            "conversion": {
+              "docsToFormat": "application/pdf"
+            }
+          },
+          "fileName": "={{ $('Prepare Document').first().json.fileName }}.pdf"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "3c9e0000-0000-4000-8000-000000000007",
+      "name": "Send to Client?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1320,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $('Prepare Document').first().json.sendToClient }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "3c9e0000-0000-4000-8000-000000000008",
+      "name": "Email Client",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1560,
+        -120
+      ],
+      "parameters": {
+        "sendTo": "={{ $('Prepare Document').first().json.client_email }}",
+        "subject": "={{ $('Prepare Document').first().json.doc_type }} {{ $('Prepare Document').first().json.doc_number }}: {{ $('Prepare Document').first().json.title }}",
+        "emailType": "text",
+        "message": "=Hi {{ $('Prepare Document').first().json.client_name.split(' ')[0] }},\n\nPlease find your {{ $('Prepare Document').first().json.doc_type.toLowerCase() }} for {{ $('Prepare Document').first().json.title }} attached.\n\nLet me know if you have any questions.\n\nBest regards,\n{{ $('Prepare Document').first().json.sender_name }}",
+        "options": {
+          "attachmentsUi": {
+            "attachmentsBinary": [
+              {
+                "property": "data"
+              }
+            ]
+          },
+          "ccList": "={{ $('Prepare Document').first().json.myEmail }}",
+          "appendAttribution": false
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "3c9e0000-0000-4000-8000-000000000009",
+      "name": "Email Me to Review",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1560,
+        120
+      ],
+      "parameters": {
+        "sendTo": "={{ $('Prepare Document').first().json.myEmail }}",
+        "subject": "=[Review] {{ $('Prepare Document').first().json.doc_type }} {{ $('Prepare Document').first().json.doc_number }} for {{ $('Prepare Document').first().json.client_name }}",
+        "emailType": "text",
+        "message": "=A new {{ $('Prepare Document').first().json.doc_type.toLowerCase() }} is ready for review. The PDF is attached.\n\nClient: {{ $('Prepare Document').first().json.client_name }} <{{ $('Prepare Document').first().json.client_email }}>\nCompany: {{ $('Prepare Document').first().json.company || '-' }}\nTitle: {{ $('Prepare Document').first().json.title }}\nAmount: {{ $('Prepare Document').first().json.amount || '-' }}\nDate: {{ $('Prepare Document').first().json.date }}\n\nEdit the Google Doc: https://docs.google.com/document/d/{{ $('Copy Template').first().json.id }}/edit\n\nIt has not been sent to the client. Check it, then forward the PDF (or export a new one after editing).",
+        "options": {
+          "attachmentsUi": {
+            "attachmentsBinary": [
+              {
+                "property": "data"
+              }
+            ]
+          },
+          "appendAttribution": false
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "3c9e0000-0000-4000-8000-000000000010",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -440
+      ],
+      "parameters": {
+        "content": "## Form submissions to documents\nA form submission picks a Google Docs template (quote, contract or certificate), copies it, fills in the `{{placeholders}}`, exports a PDF and emails it.\n\nBy default the PDF goes **to you for review**. Set `sendToClient` to true to email the client directly (you're CC'd).\n\n1. Make the Google Docs templates (see README)\n2. Fill in **Settings**\n3. Connect Google Drive, Google Docs and Gmail credentials\n4. Open the form URL and submit a test",
+        "height": 380,
+        "width": 400
+      }
+    }
+  ],
+  "connections": {
+    "Document Request Form": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings": {
+      "main": [
+        [
+          {
+            "node": "Prepare Document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Document": {
+      "main": [
+        [
+          {
+            "node": "Copy Template",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Copy Template": {
+      "main": [
+        [
+          {
+            "node": "Fill Placeholders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fill Placeholders": {
+      "main": [
+        [
+          {
+            "node": "Export PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Export PDF": {
+      "main": [
+        [
+          {
+            "node": "Send to Client?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send to Client?": {
+      "main": [
+        [
+          {
+            "node": "Email Client",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email Me to Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
