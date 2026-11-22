@@ -1,0 +1,602 @@
+{
+  "name": "Overdue invoice reminders",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "1a0c0000-0000-4000-8000-000000000001",
+      "name": "Every Weekday at 9:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "notes": "Uses the workflow's time zone (Workflow settings > Timezone)."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "s1",
+              "name": "ownerEmail",
+              "value": "REPLACE_ME@example.com",
+              "type": "string"
+            },
+            {
+              "id": "s2",
+              "name": "signature",
+              "value": "REPLACE_ME Your Name",
+              "type": "string"
+            },
+            {
+              "id": "s3",
+              "name": "companyName",
+              "value": "REPLACE_ME Your Company",
+              "type": "string"
+            },
+            {
+              "id": "s4",
+              "name": "sheetId",
+              "value": "REPLACE_ME_SHEET_ID",
+              "type": "string"
+            },
+            {
+              "id": "s5",
+              "name": "sheetName",
+              "value": "Invoices",
+              "type": "string"
+            },
+            {
+              "id": "s6",
+              "name": "reminderDays",
+              "value": "1, 7, 14",
+              "type": "string"
+            },
+            {
+              "id": "s7",
+              "name": "minDaysBetween",
+              "value": 3,
+              "type": "number"
+            },
+            {
+              "id": "s8",
+              "name": "dryRun",
+              "value": true,
+              "type": "boolean"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "1a0c0000-0000-4000-8000-000000000002",
+      "name": "Settings",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        0
+      ],
+      "notes": "Fill these in before the first run. dryRun starts as true: reminders go to ownerEmail, not to clients, and the sheet is not changed."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Stop early with a clear message if Settings still holds the template placeholders.\n{\n  const s = $('Settings').first().json;\n  const unset = [\"ownerEmail\", \"signature\", \"companyName\", \"sheetId\"].filter(k => !String(s[k] ?? '').trim() || String(s[k]).includes('REPLACE_ME'));\n  if (unset.length) {\n    throw new Error('Open the Settings node and fill in: ' + unset.join(', ') + '. They still contain REPLACE_ME placeholders.');\n  }\n}\n\nreturn $input.all();"
+      },
+      "id": "1a0c0000-0000-4000-8000-000000000003",
+      "name": "Check Settings",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Settings').first().json.sheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $('Settings').first().json.sheetName }}",
+          "mode": "name"
+        },
+        "options": {
+          "outputFormatting": {
+            "values": {
+              "general": "UNFORMATTED_VALUE",
+              "date": "SERIAL_NUMBER"
+            }
+          }
+        }
+      },
+      "id": "1a0c0000-0000-4000-8000-000000000004",
+      "name": "Read Invoices",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        660,
+        0
+      ],
+      "executeOnce": true,
+      "notes": "Dates are read as serial numbers so 03/04 can never be misread as April 3 or March 4."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Decide, for every invoice row, whether a reminder is due today.\nconst s = $('Settings').first().json;\nconst today = $today; // start of today in the workflow's time zone\nconst steps = String(s.reminderDays || '1, 7, 14')\n  .split(',').map(n => parseInt(n, 10)).filter(n => n >= 0).sort((a, b) => a - b);\nconst minGap = Number(s.minDaysBetween) || 0;\nconst dryRun = s.dryRun !== false && String(s.dryRun).toLowerCase() !== 'false';\n\n// Accepts Google Sheets date serial numbers, ISO dates (2026-11-22) and ISO date-times.\nfunction toDate(v) {\n  if (v === undefined || v === null || v === '') return null;\n  if (typeof v === 'number' || /^\\d+(\\.\\d+)?$/.test(String(v))) {\n    return DateTime.fromObject({ year: 1899, month: 12, day: 30 }, { zone: today.zone })\n      .plus({ days: Math.floor(Number(v)) });\n  }\n  const d = DateTime.fromISO(String(v).trim(), { zone: today.zone });\n  return d.isValid ? d.startOf('day') : null;\n}\nfunction money(amount, currency) {\n  const n = Number(String(amount).replace(/[^0-9.\\-]/g, ''));\n  if (amount === '' || isNaN(n)) return String(amount || '');\n  try {\n    if (/^[A-Z]{3}$/.test(String(currency))) {\n      return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(n);\n    }\n  } catch (e) {}\n  return `${currency ? currency + ' ' : ''}${n.toFixed(2)}`;\n}\nconst fmt = d => d.toFormat('d LLL yyyy');\nconst ordinal = ['first', 'second', 'third', 'fourth', 'fifth'];\n\nfunction reminderText(inv, stage, last) {\n  const hi = `Hi ${inv.contactName || inv.client || 'there'},`;\n  const ref = `invoice ${inv.invoice} for ${inv.amountText}`;\n  const pay = inv.paymentLink ? `You can pay online here: ${inv.paymentLink}` : '';\n  const paid = \"If you've already paid, thank you, and please ignore this message.\";\n  let subject, lines;\n  if (stage === 1) {\n    subject = `Friendly reminder: invoice ${inv.invoice} was due on ${inv.dueText}`;\n    lines = [hi, '', `I hope you're well. This is a friendly reminder that ${ref} was due on ${inv.dueText}.`, pay, '', paid, 'If anything is unclear, just reply to this email.'];\n  } else if (!last) {\n    subject = `Reminder: invoice ${inv.invoice} is ${inv.daysOverdue} days overdue`;\n    lines = [hi, '', `I'm following up on ${ref}, which was due on ${inv.dueText} and is now ${inv.daysOverdue} days overdue.`, pay, '', 'Could you let me know when I can expect payment? ' + paid];\n  } else {\n    subject = `Final reminder: invoice ${inv.invoice} is ${inv.daysOverdue} days overdue`;\n    lines = [hi, '', `This is a final reminder about ${ref}, which was due on ${inv.dueText} and is now ${inv.daysOverdue} days overdue.`, pay, '', \"Please arrange payment as soon as possible, or reply to let me know if there's a problem with the invoice so we can sort it out together. \" + paid];\n  }\n  const body = [...lines.filter((l, n, a) => l !== '' || a[n - 1] !== ''), '', 'Best regards,', s.signature, s.companyName].join('\\n');\n  return { subject, body };\n}\n\nconst out = [];\n$input.all().forEach((item, i) => {\n  const r = item.json;\n  if (Object.keys(r).length === 0) return; // empty sheet\n  const status = String(r['Status'] || '').trim();\n  if (/^(paid|void|cancel+ed|written off)$/i.test(status)) return;\n\n  const inv = {\n    row: r.row_number,\n    invoice: String(r['Invoice #'] ?? '').trim(),\n    client: String(r['Client'] || '').trim(),\n    contactName: String(r['Contact name'] || '').trim(),\n    email: String(r['Email'] || '').trim(),\n    amountText: money(r['Amount'], String(r['Currency'] || '').trim().toUpperCase()),\n    paymentLink: String(r['Payment link'] || '').trim(),\n    remindersSent: parseInt(r['Reminders sent'], 10) || 0,\n  };\n  const due = toDate(r['Due date']);\n  const last = toDate(r['Last reminder']);\n\n  const problems = [];\n  if (!inv.invoice) problems.push('no Invoice #');\n  if (!due) problems.push('Due date missing or not a date');\n  if (!/^[^\\s@,]+@[^\\s@,]+\\.[^\\s@,]+$/.test(inv.email)) problems.push('Email missing or not valid');\n  if (problems.length) {\n    // Only report rows that look like real invoices (anything filled in).\n    if (inv.invoice || inv.client || inv.email) {\n      out.push({ json: { ...inv, action: 'fix', problem: problems.join(', ') }, pairedItem: { item: i } });\n    }\n    return;\n  }\n\n  inv.dueText = fmt(due);\n  inv.daysOverdue = Math.floor(today.diff(due, 'days').days);\n  if (inv.daysOverdue <= 0) return; // not overdue yet\n\n  const stage = inv.remindersSent + 1;\n  const daysSinceLast = last ? Math.floor(today.diff(last, 'days').days) : Infinity;\n  let action = 'wait';\n  if (inv.remindersSent >= steps.length) action = 'escalate';\n  else if (inv.daysOverdue >= steps[inv.remindersSent] && daysSinceLast >= minGap) action = 'remind';\n\n  const json = { ...inv, action, stage, totalStages: steps.length, lastReminder: last ? fmt(last) : '', dryRun };\n  if (action === 'remind') {\n    const t = reminderText(inv, stage, stage === steps.length && steps.length > 1);\n    json.to = dryRun ? s.ownerEmail : inv.email;\n    json.subject = (dryRun ? `[TEST, would go to ${inv.email}] ` : '') + t.subject;\n    json.body = t.body;\n    json.todayIso = today.toFormat('yyyy-MM-dd');\n  }\n  out.push({ json, pairedItem: { item: i } });\n});\nreturn out;"
+      },
+      "id": "1a0c0000-0000-4000-8000-000000000005",
+      "name": "Find Due Reminders",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        0
+      ],
+      "notes": "Edit reminderText() here to change the wording of the three reminders."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "d1",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "remind",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "1a0c0000-0000-4000-8000-000000000006",
+      "name": "Reminder Due?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1120,
+        -120
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "1a0c0000-0000-4000-8000-000000000007",
+      "name": "No Reminder Today",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1360,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "text",
+        "message": "={{ $json.body }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "1a0c0000-0000-4000-8000-000000000008",
+      "name": "Send Reminder",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1360,
+        -200
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "notes": "In a dry run this goes to ownerEmail, with the client's address in the subject."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "v1",
+              "leftValue": "={{ $('Find Due Reminders').item.json.dryRun }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "1a0c0000-0000-4000-8000-000000000009",
+      "name": "Live Run?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1600,
+        -200
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "1a0c0000-0000-4000-8000-000000000010",
+      "name": "Test Run (sheet unchanged)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1840,
+        -60
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Settings').first().json.sheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "={{ $('Settings').first().json.sheetName }}",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Invoice #": "={{ $('Find Due Reminders').item.json.invoice }}",
+            "Reminders sent": "={{ $('Find Due Reminders').item.json.stage }}",
+            "Last reminder": "={{ $('Find Due Reminders').item.json.todayIso }}"
+          },
+          "matchingColumns": [
+            "Invoice #"
+          ],
+          "schema": [
+            {
+              "id": "Invoice #",
+              "displayName": "Invoice #",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Client",
+              "displayName": "Client",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Contact name",
+              "displayName": "Contact name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Amount",
+              "displayName": "Amount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Currency",
+              "displayName": "Currency",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Issue date",
+              "displayName": "Issue date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Due date",
+              "displayName": "Due date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Payment link",
+              "displayName": "Payment link",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Reminders sent",
+              "displayName": "Reminders sent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Last reminder",
+              "displayName": "Last reminder",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Notes",
+              "displayName": "Notes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            }
+          ]
+        },
+        "options": {
+          "cellFormat": "USER_ENTERED"
+        }
+      },
+      "id": "1a0c0000-0000-4000-8000-000000000011",
+      "name": "Record Reminder",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1840,
+        -260
+      ],
+      "notes": "Counts the reminder and stores today's date, so the next one waits its turn."
+    },
+    {
+      "parameters": {
+        "jsCode": "// One summary email for you: what was sent, what needs you, and rows to fix.\nconst s = $('Settings').first().json;\nconst all = $input.all().map(i => i.json);\nconst by = a => all.filter(x => x.action === a);\nconst sent = by('remind'), escalate = by('escalate'), waiting = by('wait'), fix = by('fix');\nif (!sent.length && !escalate.length && !fix.length) return [];\n\nconst line = x => `- ${x.invoice} · ${x.client || x.email} · ${x.amountText} · ${x.daysOverdue} days overdue`;\nconst dryRun = s.dryRun !== false && String(s.dryRun).toLowerCase() !== 'false';\nconst parts = [\n  `Invoice reminders for ${$today.toFormat('cccc d LLL yyyy')}`,\n  dryRun ? '\\nTEST RUN: reminders were sent to you instead of clients, and the sheet was not changed. Set dryRun to false in Settings when you are happy with them.' : '',\n];\nif (sent.length) parts.push(`\\nReminders ${dryRun ? 'drafted (sent to you)' : 'sent'} (${sent.length}):`, ...sent.map(x => `${line(x)} · reminder ${x.stage} of ${x.totalStages}`));\nif (escalate.length) parts.push(`\\nNeeds a personal follow-up (${escalate.length}). All automatic reminders have been sent:`, ...escalate.map(x => `${line(x)} · last reminder ${x.lastReminder || 'unknown'}`));\nif (waiting.length) parts.push(`\\nOverdue, next reminder later (${waiting.length}):`, ...waiting.map(x => `${line(x)} · ${x.remindersSent} sent so far`));\nif (fix.length) parts.push(`\\nRows to fix in the sheet (${fix.length}):`, ...fix.map(x => `- row ${x.row}${x.invoice ? ' (' + x.invoice + ')' : ''}: ${x.problem}`));\nparts.push(`\\nSheet: https://docs.google.com/spreadsheets/d/${s.sheetId}`);\n\nreturn [{\n  json: {\n    subject: `${dryRun ? '[TEST] ' : ''}Invoice reminders: ${sent.length} sent, ${escalate.length} need you${fix.length ? ', ' + fix.length + (fix.length === 1 ? ' row' : ' rows') + ' to fix' : ''}`,\n    body: parts.filter(p => p !== '').join('\\n'),\n  },\n}];"
+      },
+      "id": "1a0c0000-0000-4000-8000-000000000012",
+      "name": "Build Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        220
+      ],
+      "notes": "Returns nothing on days with nothing to report, so no email is sent."
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Settings').first().json.ownerEmail }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "text",
+        "message": "={{ $json.body }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "1a0c0000-0000-4000-8000-000000000013",
+      "name": "Email Me the Summary",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1360,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Overdue invoice reminders\nEvery weekday morning, reads your **Invoices** sheet and sends polite reminders for unpaid invoices past their due date: friendly, then firmer, then final. After the last one, it tells you to follow up personally.\n\n**Starts in test mode** (dryRun): reminders come to you, and the sheet is not changed.\n\n1. Create the **Invoices** sheet (columns in the README)\n2. Fill in **Settings**\n3. Connect Gmail + Google Sheets credentials\n4. Run it, check the test emails, then set dryRun to false and activate",
+        "height": 400,
+        "width": 420
+      },
+      "id": "1a0c0000-0000-4000-8000-000000000014",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -520
+      ]
+    }
+  ],
+  "connections": {
+    "Every Weekday at 9:00": {
+      "main": [
+        [
+          {
+            "node": "Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settings": {
+      "main": [
+        [
+          {
+            "node": "Check Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Settings": {
+      "main": [
+        [
+          {
+            "node": "Read Invoices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Invoices": {
+      "main": [
+        [
+          {
+            "node": "Find Due Reminders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Due Reminders": {
+      "main": [
+        [
+          {
+            "node": "Reminder Due?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Build Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reminder Due?": {
+      "main": [
+        [
+          {
+            "node": "Send Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Reminder Today",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Reminder": {
+      "main": [
+        [
+          {
+            "node": "Live Run?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Live Run?": {
+      "main": [
+        [
+          {
+            "node": "Record Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Test Run (sheet unchanged)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Summary": {
+      "main": [
+        [
+          {
+            "node": "Email Me the Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
