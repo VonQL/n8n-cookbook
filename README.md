@@ -14,6 +14,17 @@ templates/
 - One folder per template, named in `kebab-case`.
 - `templates/_example-template/` shows the expected shape. Copy it to start a new one.
 
+## Templates
+
+### Email and communication
+
+- [Email opportunity auto-reply](templates/email-opportunity-auto-reply/)
+- [Human-in-the-loop email reply](templates/email-human-in-the-loop-reply/)
+- [Email triage: auto-reply or ask me first](templates/email-triage-auto-reply-or-approval/)
+- [Morning inbox digest](templates/email-morning-inbox-digest/): one Telegram message each morning summarizing your inbox
+- [Save email attachments to Drive](templates/email-attachments-to-drive/): attachments saved to Google Drive and logged in a sheet
+- [Follow-up reminders](templates/email-follow-up-reminders/): Telegram reminders for sent emails that got no reply
+
 ## Ideas
 
 See [docs/automation-ideas.md](docs/automation-ideas.md) for a backlog of office automations that would make good templates, with the ones already built marked.
